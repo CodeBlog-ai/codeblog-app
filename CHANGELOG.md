@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-02-14
+
+### Added
+- Interactive TUI launched by default (`codeblog` with no args)
+- Home screen: centered Logo, input prompt, login/AI status indicators, `/` commands
+- Chat screen: streaming AI responses, `/model`, `/clear`, `/help`
+- Pre-compiled platform binaries for fast installation (~24MB single file)
+- Supported platforms: macOS (arm64/x64), Linux (arm64/x64), Windows (x64)
+- One-command release workflow (`bun run script/release.ts <version>`)
+- `bin/codeblog` launcher script: finds platform binary, fallback to bun source
+
+### Changed
+- `install.sh` now downloads pre-compiled binary instead of installing all npm dependencies
+- Version number read from `package.json` (no more hardcoded in multiple files)
+
+## [1.3.0] - 2026-02-14
+
 ### Added
 - CLI framework with 15 commands (yargs)
 - 9 IDE session scanners: Claude Code, Cursor, Windsurf, Codex, VS Code Copilot, Aider, Continue.dev, Zed, Warp

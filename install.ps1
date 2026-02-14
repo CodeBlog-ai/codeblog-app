@@ -1,100 +1,60 @@
-# codeblog-app installer for Windows
+# codeblog installer for Windows — downloads pre-compiled binary, no dependencies needed
 # Usage: irm https://codeblog.ai/install.ps1 | iex
 
 $ErrorActionPreference = "Stop"
 
 $InstallDir = if ($env:CODEBLOG_INSTALL_DIR) { $env:CODEBLOG_INSTALL_DIR } else { "$env:LOCALAPPDATA\codeblog\bin" }
-$LibDir = "$env:LOCALAPPDATA\codeblog\lib"
 $BinName = "codeblog"
+$NpmRegistry = "https://registry.npmjs.org"
 
 function Write-Info($msg) { Write-Host "[codeblog] $msg" -ForegroundColor Cyan }
 function Write-Ok($msg) { Write-Host "[codeblog] $msg" -ForegroundColor Green }
-function Write-Warn($msg) { Write-Host "[codeblog] $msg" -ForegroundColor Yellow }
 function Write-Err($msg) { Write-Host "[codeblog] $msg" -ForegroundColor Red; exit 1 }
 
-function Ensure-Bun {
-    if (Get-Command bun -ErrorAction SilentlyContinue) {
-        Write-Info "Found bun $(bun --version)"
-        return
-    }
-    $bunPath = "$env:USERPROFILE\.bun\bin\bun.exe"
-    if (Test-Path $bunPath) {
-        $env:PATH = "$env:USERPROFILE\.bun\bin;$env:PATH"
-        Write-Info "Found bun at $bunPath"
-        return
-    }
-    Write-Info "Installing bun..."
-    irm https://bun.sh/install.ps1 | iex
-    $env:PATH = "$env:USERPROFILE\.bun\bin;$env:PATH"
-    Write-Info "Installed bun $(bun --version)"
+function Get-LatestVersion {
+    $resp = Invoke-RestMethod -Uri "$NpmRegistry/codeblog-app/latest" -ErrorAction Stop
+    return $resp.version
 }
 
-function Install-Codeblog {
-    Write-Info "Installing codeblog-app from npm..."
+function Install-Binary {
+    $arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLower()
+    if ($arch -eq "x64") { $arch = "x64" }
+    elseif ($arch -eq "arm64") { $arch = "arm64" }
+    else { Write-Err "Unsupported architecture: $arch" }
+
+    $pkg = "codeblog-app-windows-$arch"
+
+    Write-Info "Checking latest version..."
+    $version = Get-LatestVersion
+    if (-not $version) { Write-Err "Failed to fetch latest version" }
+    Write-Info "Latest version: $version"
+
+    Write-Info "Downloading $pkg@$version..."
+    $url = "$NpmRegistry/$pkg/-/$pkg-$version.tgz"
 
     $tmpDir = Join-Path $env:TEMP "codeblog-install-$(Get-Random)"
     New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
 
     try {
-        Push-Location $tmpDir
-        bun init -y 2>$null | Out-Null
-        bun add codeblog-app@latest
+        $tgz = Join-Path $tmpDir "pkg.tgz"
+        Invoke-WebRequest -Uri $url -OutFile $tgz -ErrorAction Stop
+
+        Write-Info "Installing..."
+        tar -xzf $tgz -C $tmpDir
 
         New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
-        New-Item -ItemType Directory -Path "$LibDir\node_modules" -Force | Out-Null
+        Copy-Item -Force (Join-Path $tmpDir "package\bin\codeblog.exe") (Join-Path $InstallDir "$BinName.exe")
 
-        Copy-Item -Recurse -Force "node_modules\codeblog-app" "$LibDir\node_modules\"
-
-        # Create wrapper batch file
-        $wrapper = @"
-@echo off
-setlocal
-
-set "BUN=bun"
-where bun >nul 2>&1 || (
-    if exist "%USERPROFILE%\.bun\bin\bun.exe" (
-        set "BUN=%USERPROFILE%\.bun\bin\bun.exe"
-    ) else (
-        echo Error: bun is required. Install it: irm https://bun.sh/install.ps1 ^| iex >&2
-        exit /b 1
-    )
-)
-
-set "PKG="
-if exist "%LOCALAPPDATA%\codeblog\lib\node_modules\codeblog-app\src\index.ts" (
-    set "PKG=%LOCALAPPDATA%\codeblog\lib\node_modules\codeblog-app"
-)
-
-if "%PKG%"=="" (
-    echo Error: codeblog-app not found. Reinstall: irm https://codeblog.ai/install.ps1 ^| iex >&2
-    exit /b 1
-)
-
-"%BUN%" run "%PKG%\src\index.ts" %*
-"@
-        Set-Content -Path "$InstallDir\$BinName.cmd" -Value $wrapper -Encoding ASCII
-
-        # Install deps in lib dir
-        Push-Location $LibDir
-        if (-not (Test-Path "package.json")) {
-            Set-Content -Path "package.json" -Value '{"dependencies":{}}' -Encoding UTF8
-        }
-        bun add codeblog-app@latest 2>$null | Out-Null
-        Pop-Location
-
-        Write-Ok "Installed codeblog to $InstallDir\$BinName.cmd"
+        Write-Ok "Installed codeblog v$version to $InstallDir\$BinName.exe"
     }
     finally {
-        Pop-Location
         Remove-Item -Recurse -Force $tmpDir -ErrorAction SilentlyContinue
     }
 }
 
 function Setup-Path {
     $currentPath = [Environment]::GetEnvironmentVariable("Path", "User")
-    if ($currentPath -split ";" | Where-Object { $_ -eq $InstallDir }) {
-        return
-    }
+    if ($currentPath -split ";" | Where-Object { $_ -eq $InstallDir }) { return }
     [Environment]::SetEnvironmentVariable("Path", "$InstallDir;$currentPath", "User")
     $env:PATH = "$InstallDir;$env:PATH"
     Write-Info "Added $InstallDir to user PATH"
@@ -107,8 +67,7 @@ function Main {
 
     Write-Info "Platform: windows-$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLower())"
 
-    Ensure-Bun
-    Install-Codeblog
+    Install-Binary
     Setup-Path
 
     Write-Host ""
@@ -116,9 +75,7 @@ function Main {
     Write-Host ""
     Write-Host "  Get started:" -ForegroundColor White
     Write-Host ""
-    Write-Host "    codeblog setup       " -NoNewline -ForegroundColor Cyan; Write-Host "First-time setup (login + scan + publish)"
-    Write-Host "    codeblog scan        " -NoNewline -ForegroundColor Cyan; Write-Host "Scan your IDE sessions"
-    Write-Host "    codeblog feed        " -NoNewline -ForegroundColor Cyan; Write-Host "Browse the forum"
+    Write-Host "    codeblog             " -NoNewline -ForegroundColor Cyan; Write-Host "Launch interactive TUI"
     Write-Host "    codeblog --help      " -NoNewline -ForegroundColor Cyan; Write-Host "See all commands"
     Write-Host ""
     Write-Host "  Note: Restart your terminal for PATH changes to take effect." -ForegroundColor Yellow
