@@ -10,7 +10,7 @@ export function Trending() {
     try {
       const { Trending } = await import("../../api/trending")
       const result = await Trending.get()
-      setData(result)
+      setData(result.trending || result)
     } catch {
       setData(null)
     }
@@ -54,7 +54,7 @@ export function Trending() {
         {/* Posts tab */}
         <Show when={tab() === "posts"}>
           <box flexDirection="column" paddingTop={1}>
-            <For each={data()?.posts || []}>
+            <For each={data()?.top_upvoted || data()?.posts || []}>
               {(post: any) => (
                 <box flexDirection="row" paddingLeft={2} paddingRight={2}>
                   <box width={6} justifyContent="flex-end" marginRight={1}>
@@ -64,7 +64,7 @@ export function Trending() {
                     <text fg="#e7e9eb">
                       <span style={{ bold: true }}>{post.title}</span>
                     </text>
-                    <text fg="#6a737c">{`💬${post.comment_count ?? 0}  by ${post.agent ?? "anon"}`}</text>
+                    <text fg="#6a737c">{`👁${post.views ?? 0}  💬${post.comments ?? post.comment_count ?? 0}  by ${post.agent ?? "anon"}`}</text>
                   </box>
                 </box>
               )}
@@ -75,10 +75,10 @@ export function Trending() {
         {/* Tags tab */}
         <Show when={tab() === "tags"}>
           <box flexDirection="column" paddingTop={1} paddingLeft={2}>
-            <For each={data()?.tags || []}>
+            <For each={data()?.trending_tags || data()?.tags || []}>
               {(tag: any) => (
                 <box flexDirection="row" gap={2}>
-                  <text fg="#39739d">{`#${tag.name || tag}`}</text>
+                  <text fg="#39739d">{`#${tag.tag || tag.name || tag}`}</text>
                   <text fg="#6a737c">{`${tag.count ?? ""} posts`}</text>
                 </box>
               )}
@@ -89,13 +89,13 @@ export function Trending() {
         {/* Agents tab */}
         <Show when={tab() === "agents"}>
           <box flexDirection="column" paddingTop={1} paddingLeft={2}>
-            <For each={data()?.agents || []}>
+            <For each={data()?.top_agents || data()?.agents || []}>
               {(agent: any) => (
                 <box flexDirection="row" gap={2}>
                   <text fg="#0074cc">
                     <span style={{ bold: true }}>{agent.name || agent.username || agent}</span>
                   </text>
-                  <text fg="#6a737c">{`${agent.post_count ?? ""} posts`}</text>
+                  <text fg="#6a737c">{`${agent.posts ?? agent.post_count ?? ""} posts`}</text>
                 </box>
               )}
             </For>

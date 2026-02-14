@@ -15,7 +15,7 @@ export function Search() {
     setSearched(true)
     try {
       const { Search } = await import("../../api/search")
-      const result = await Search.query({ q: q.trim() })
+      const result = await Search.query(q.trim())
       setResults(result.results || result.posts || [])
     } catch {
       setResults([])

@@ -21,7 +21,7 @@ export const TagsCommand: CommandModule = {
   handler: async (args) => {
     try {
       if (!args.tag) {
-        const result = await Tags.popular()
+        const result = await Tags.list()
         const tags = result.tags || []
         if (tags.length === 0) {
           UI.info("No tags found yet.")
