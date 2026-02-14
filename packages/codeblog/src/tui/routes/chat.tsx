@@ -1,4 +1,4 @@
-import { createSignal, For, Show } from "solid-js"
+import { createSignal, For, Show, onMount } from "solid-js"
 import { useKeyboard } from "@opentui/solid"
 import { useRoute } from "../context/route"
 
@@ -13,18 +13,34 @@ export function Chat() {
   const [streaming, setStreaming] = createSignal(false)
   const [streamText, setStreamText] = createSignal("")
   const [model, setModel] = createSignal("")
-
-  // Load configured model on mount
-  import("../../config").then(({ Config }) =>
-    Config.load().then((cfg) => {
-      if (cfg.model) setModel(cfg.model)
-    }).catch(() => {}),
-  )
+  const [modelName, setModelName] = createSignal("")
   const [inputBuf, setInputBuf] = createSignal("")
-  const [inputMode, setInputMode] = createSignal(true)
+
+  onMount(async () => {
+    try {
+      const { Config } = await import("../../config")
+      const { AIProvider } = await import("../../ai/provider")
+      const cfg = await Config.load()
+      const id = cfg.model || AIProvider.DEFAULT_MODEL
+      setModel(id)
+      const info = AIProvider.BUILTIN_MODELS[id]
+      setModelName(info?.name || id)
+    } catch {}
+
+    // Auto-send initial message from home screen
+    const data = route.data as any
+    if (data.sessionMessages?.length > 0) {
+      for (const msg of data.sessionMessages) {
+        if (msg.role === "user") {
+          send(msg.content)
+          break
+        }
+      }
+    }
+  })
 
   async function send(text: string) {
-    if (!text.trim()) return
+    if (!text.trim() || streaming()) return
     const userMsg: Message = { role: "user", content: text.trim() }
     const prev = messages()
     setMessages([...prev, userMsg])
@@ -53,6 +69,7 @@ export function Chat() {
           },
           onError: (err) => {
             setMessages((p) => [...p, { role: "assistant", content: `Error: ${err.message}` }])
+            setStreamText("")
             setStreaming(false)
           },
         },
@@ -61,6 +78,7 @@ export function Chat() {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       setMessages((p) => [...p, { role: "assistant", content: `Error: ${msg}` }])
+      setStreamText("")
       setStreaming(false)
     }
   }
@@ -78,10 +96,14 @@ export function Chat() {
     if (name === "/model") {
       const id = parts[1]
       if (!id) {
-        setMessages((p) => [...p, { role: "assistant", content: `Current model: ${model()}\nUsage: /model <model-id>` }])
+        setMessages((p) => [...p, { role: "assistant", content: `Current model: ${modelName()} (${model()})\nUsage: /model <model-id>` }])
         return
       }
       setModel(id)
+      import("../../ai/provider").then(({ AIProvider }) => {
+        const info = AIProvider.BUILTIN_MODELS[id]
+        setModelName(info?.name || id)
+      }).catch(() => setModelName(id))
       setMessages((p) => [...p, { role: "assistant", content: `Switched to model: ${id}` }])
       return
     }
@@ -102,14 +124,13 @@ export function Chat() {
       return
     }
 
-    setMessages((p) => [...p, { role: "assistant", content: `Unknown command: ${name}. Type /help for available commands.` }])
+    setMessages((p) => [...p, { role: "assistant", content: `Unknown command: ${name}. Type /help` }])
   }
 
   useKeyboard((evt) => {
-    if (!inputMode()) return
-
     if (evt.name === "return" && !evt.shift) {
       const text = inputBuf().trim()
+      if (!text) return
       setInputBuf("")
       if (text.startsWith("/")) {
         handleCommand(text)
@@ -143,12 +164,12 @@ export function Chat() {
     <box flexDirection="column" flexGrow={1}>
       {/* Header */}
       <box paddingLeft={2} paddingRight={2} paddingTop={1} flexShrink={0} flexDirection="row" gap={1}>
-        <text fg="#d946ef">
+        <text fg="#0074cc">
           <span style={{ bold: true }}>AI Chat</span>
         </text>
-        <text fg="#6a737c">{model()}</text>
+        <text fg="#6a737c">{modelName()}</text>
         <box flexGrow={1} />
-        <text fg="#6a737c">esc:back  /help</text>
+        <text fg="#6a737c">esc:back · /help · /model · /clear</text>
       </box>
 
       {/* Messages */}

@@ -35,7 +35,7 @@ import { WeeklyDigestCommand } from "./cli/cmd/weekly-digest"
 import { TagsCommand } from "./cli/cmd/tags"
 import { ExploreCommand } from "./cli/cmd/explore"
 
-const VERSION = "1.2.0"
+const VERSION = "1.3.0"
 
 process.on("unhandledRejection", (e) => {
   Log.Default.error("rejection", {
@@ -128,6 +128,20 @@ const cli = yargs(hideBin(process.argv))
     process.exit(1)
   })
   .strict()
+
+// If no subcommand given, launch TUI
+const args = hideBin(process.argv)
+const hasSubcommand = args.length > 0 && !args[0].startsWith("-")
+const isHelp = args.includes("--help") || args.includes("-h")
+const isVersion = args.includes("--version") || args.includes("-v")
+
+if (!hasSubcommand && !isHelp && !isVersion) {
+  await Log.init({ print: false })
+  Log.Default.info("codeblog", { version: VERSION, args: [] })
+  const { tui } = await import("./tui/app")
+  await tui({ onExit: async () => {} })
+  process.exit(0)
+}
 
 try {
   await cli.parse()
