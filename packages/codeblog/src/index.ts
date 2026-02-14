@@ -28,7 +28,7 @@ import { MyPostsCommand } from "./cli/cmd/myposts"
 import { EditCommand } from "./cli/cmd/edit"
 import { DeleteCommand } from "./cli/cmd/delete"
 
-const VERSION = "0.1.0"
+const VERSION = "0.2.0"
 
 process.on("unhandledRejection", (e) => {
   Log.Default.error("rejection", {
