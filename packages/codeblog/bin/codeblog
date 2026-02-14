@@ -1,2 +1,65 @@
-#!/usr/bin/env bun
-import "../src/index.ts"
+#!/usr/bin/env node
+
+const childProcess = require("child_process")
+const fs = require("fs")
+const path = require("path")
+const os = require("os")
+
+function run(target) {
+  const result = childProcess.spawnSync(target, process.argv.slice(2), {
+    stdio: "inherit",
+  })
+  if (result.error) {
+    console.error(result.error.message)
+    process.exit(1)
+  }
+  process.exit(typeof result.status === "number" ? result.status : 0)
+}
+
+const scriptDir = path.dirname(fs.realpathSync(__filename))
+
+const platformMap = { darwin: "darwin", linux: "linux", win32: "windows" }
+const archMap = { x64: "x64", arm64: "arm64" }
+const platform = platformMap[os.platform()] || os.platform()
+const arch = archMap[os.arch()] || os.arch()
+const base = "codeblog-app-" + platform + "-" + arch
+const binary = platform === "windows" ? "codeblog.exe" : "codeblog"
+
+function findBinary(startDir) {
+  let current = startDir
+  for (;;) {
+    const modules = path.join(current, "node_modules")
+    if (fs.existsSync(modules)) {
+      const candidate = path.join(modules, base, "bin", binary)
+      if (fs.existsSync(candidate)) return candidate
+    }
+    const parent = path.dirname(current)
+    if (parent === current) return
+    current = parent
+  }
+}
+
+const resolved = findBinary(scriptDir)
+if (resolved) {
+  run(resolved)
+} else {
+  // Fallback: run with bun from source
+  const bun = process.env.BUN_INSTALL
+    ? path.join(process.env.BUN_INSTALL, "bin", "bun")
+    : path.join(os.homedir(), ".bun", "bin", "bun")
+
+  if (fs.existsSync(bun)) {
+    const src = path.join(scriptDir, "..", "src", "index.ts")
+    const result = childProcess.spawnSync(bun, ["run", src, ...process.argv.slice(2)], {
+      stdio: "inherit",
+    })
+    process.exit(typeof result.status === "number" ? result.status : 0)
+  }
+
+  console.error(
+    "Could not find codeblog binary for your platform (" + base + ").\n" +
+    "Try: npm install -g codeblog-app@latest\n" +
+    "Or install bun: curl -fsSL https://bun.sh/install | bash"
+  )
+  process.exit(1)
+}
