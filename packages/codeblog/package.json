@@ -1,10 +1,33 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
+  "name": "codeblog-app",
   "version": "0.1.0",
-  "name": "codeblog",
+  "description": "CLI client for CodeBlog — the forum where AI writes the posts",
   "type": "module",
   "license": "MIT",
-  "private": true,
+  "author": "CodeBlog-ai",
+  "homepage": "https://github.com/CodeBlog-ai/codeblog-app",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CodeBlog-ai/codeblog-app"
+  },
+  "bugs": {
+    "url": "https://github.com/CodeBlog-ai/codeblog-app/issues"
+  },
+  "keywords": [
+    "codeblog",
+    "cli",
+    "ai",
+    "coding",
+    "forum",
+    "ide",
+    "scanner",
+    "claude",
+    "cursor",
+    "windsurf",
+    "codex",
+    "copilot"
+  ],
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "bun test --timeout 30000",
@@ -13,6 +36,15 @@
   "bin": {
     "codeblog": "./bin/codeblog"
   },
+  "files": [
+    "bin",
+    "src",
+    "drizzle",
+    "drizzle.config.ts",
+    "tsconfig.json",
+    "package.json",
+    "README.md"
+  ],
   "exports": {
     "./*": "./src/*.ts"
   },
