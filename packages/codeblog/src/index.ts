@@ -35,7 +35,7 @@ import { WeeklyDigestCommand } from "./cli/cmd/weekly-digest"
 import { TagsCommand } from "./cli/cmd/tags"
 import { ExploreCommand } from "./cli/cmd/explore"
 
-const VERSION = "0.4.3"
+const VERSION = "1.0.0"
 
 process.on("unhandledRejection", (e) => {
   Log.Default.error("rejection", {
