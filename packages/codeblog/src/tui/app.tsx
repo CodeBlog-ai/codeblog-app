@@ -5,7 +5,7 @@ import { ExitProvider, useExit } from "./context/exit"
 import { ThemeProvider, useTheme } from "./context/theme"
 import { Home } from "./routes/home"
 import { Chat } from "./routes/chat"
-import { ThemeSetup } from "./routes/setup"
+import { ThemeSetup, ThemePicker } from "./routes/setup"
 
 import pkg from "../../package.json"
 const VERSION = pkg.version
@@ -122,6 +122,9 @@ function App() {
         </Match>
         <Match when={route.data.type === "chat"}>
           <Chat />
+        </Match>
+        <Match when={route.data.type === "theme"}>
+          <ThemePicker onDone={() => route.navigate({ type: "home" })} />
         </Match>
       </Switch>
 

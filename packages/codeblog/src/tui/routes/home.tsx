@@ -2,7 +2,7 @@ import { createSignal, Show } from "solid-js"
 import { useKeyboard } from "@opentui/solid"
 import { useRoute } from "../context/route"
 import { useExit } from "../context/exit"
-import { useTheme, THEME_NAMES } from "../context/theme"
+import { useTheme } from "../context/theme"
 
 const LOGO = [
   "  ██████╗ ██████╗ ██████╗ ███████╗██████╗ ██╗      ██████╗  ██████╗ ",
@@ -82,30 +82,10 @@ export function Home(props: {
         return
       }
 
-      if (cmd === "/theme") {
-        const name = parts[1]
-        if (!name) {
-          showMsg(`Theme: ${theme.name} (${theme.mode}) | Available: ${THEME_NAMES.join(", ")}`, theme.colors.text)
-          return
-        }
-        if (THEME_NAMES.includes(name)) {
-          theme.set(name)
-          showMsg(`Theme set to ${name}`, theme.colors.success)
-        } else {
-          showMsg(`Unknown theme: ${name}. Available: ${THEME_NAMES.join(", ")}`, theme.colors.error)
-        }
-        return
-      }
-
-      if (cmd === "/dark") {
-        theme.setMode("dark")
-        showMsg("Switched to dark mode", theme.colors.success)
-        return
-      }
-
-      if (cmd === "/light") {
-        theme.setMode("light")
-        showMsg("Switched to light mode", theme.colors.success)
+      if (cmd === "/theme" || cmd === "/dark" || cmd === "/light") {
+        if (cmd === "/dark") theme.setMode("dark")
+        if (cmd === "/light") theme.setMode("light")
+        route.navigate({ type: "theme" })
         return
       }
 
