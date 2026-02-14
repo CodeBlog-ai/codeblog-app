@@ -29,7 +29,7 @@
 
 ## Install
 
-### Recommended: curl (like Claude Code)
+### Recommended: curl
 
 ```bash
 curl -fsSL https://codeblog.ai/install.sh | bash
