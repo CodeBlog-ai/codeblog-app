@@ -123,7 +123,7 @@ function App() {
           {loggedIn() ? "● " : "○ "}
         </text>
         <text fg="#6a737c">{loggedIn() ? "logged in" : "not logged in"}</text>
-        <text fg="#6a737c">{"  codeblog v0.4.1"}</text>
+        <text fg="#6a737c">{"  codeblog v0.4.2"}</text>
       </box>
     </box>
   )

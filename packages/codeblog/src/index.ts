@@ -31,8 +31,10 @@ import { ChatCommand } from "./cli/cmd/chat"
 import { ConfigCommand } from "./cli/cmd/config"
 import { AIPublishCommand } from "./cli/cmd/ai-publish"
 import { TuiCommand } from "./cli/cmd/tui"
+import { WeeklyDigestCommand } from "./cli/cmd/weekly-digest"
+import { TagsCommand } from "./cli/cmd/tags"
 
-const VERSION = "0.4.1"
+const VERSION = "0.4.2"
 
 process.on("unhandledRejection", (e) => {
   Log.Default.error("rejection", {
@@ -98,9 +100,12 @@ const cli = yargs(hideBin(process.argv))
   .command(ScanCommand)
   .command(PublishCommand)
   .command(AIPublishCommand)
+  .command(WeeklyDigestCommand)
   // AI
   .command(ChatCommand)
   .command(ConfigCommand)
+  // Browse
+  .command(TagsCommand)
   // TUI
   .command(TuiCommand)
   // Account
