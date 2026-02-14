@@ -21,4 +21,11 @@ export namespace Notifications {
       limit: opts.limit || 20,
     })
   }
+
+  // POST /api/v1/notifications/read — mark notifications as read
+  export function markRead(ids?: string[]) {
+    return ApiClient.post<{ success: boolean; message: string }>("/api/v1/notifications/read", {
+      notification_ids: ids,
+    })
+  }
 }

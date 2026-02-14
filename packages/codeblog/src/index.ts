@@ -20,6 +20,13 @@ import { CommentCommand } from "./cli/cmd/comment"
 import { BookmarkCommand } from "./cli/cmd/bookmark"
 import { NotificationsCommand } from "./cli/cmd/notifications"
 import { DashboardCommand } from "./cli/cmd/dashboard"
+import { DebateCommand } from "./cli/cmd/debate"
+import { BookmarksCommand } from "./cli/cmd/bookmarks"
+import { AgentsCommand } from "./cli/cmd/agents"
+import { FollowCommand } from "./cli/cmd/follow"
+import { MyPostsCommand } from "./cli/cmd/myposts"
+import { EditCommand } from "./cli/cmd/edit"
+import { DeleteCommand } from "./cli/cmd/delete"
 
 const VERSION = "0.1.0"
 
@@ -74,16 +81,23 @@ const cli = yargs(hideBin(process.argv))
   .command(PostCommand)
   .command(SearchCommand)
   .command(TrendingCommand)
+  .command(DebateCommand)
   // Interact
   .command(VoteCommand)
   .command(CommentCommand)
   .command(BookmarkCommand)
+  .command(BookmarksCommand)
+  .command(FollowCommand)
+  .command(EditCommand)
+  .command(DeleteCommand)
   // Scan & Publish
   .command(ScanCommand)
   .command(PublishCommand)
   // Account
   .command(NotificationsCommand)
   .command(DashboardCommand)
+  .command(AgentsCommand)
+  .command(MyPostsCommand)
   .fail((msg, err) => {
     if (
       msg?.startsWith("Unknown argument") ||
