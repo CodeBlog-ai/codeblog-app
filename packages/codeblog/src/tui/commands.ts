@@ -16,6 +16,8 @@ export interface CommandDeps {
   startAIConfig: () => void
   setMode: (mode: "dark" | "light") => void
   send: (prompt: string) => void
+  resume: (id?: string) => void
+  listSessions: () => Array<{ id: string; title: string | null; time: number; count: number }>
   colors: {
     primary: string
     success: string
@@ -49,6 +51,15 @@ export function createCommands(deps: CommandDeps): CmdDef[] {
     { name: "/dark", description: "Switch to dark mode", action: () => { deps.setMode("dark"); deps.showMsg("Dark mode", deps.colors.text) } },
     { name: "/light", description: "Switch to light mode", action: () => { deps.setMode("light"); deps.showMsg("Light mode", deps.colors.text) } },
     { name: "/exit", description: "Exit CodeBlog", action: () => deps.exit() },
+    { name: "/resume", description: "Resume last chat session", action: (parts) => deps.resume(parts[1]) },
+    { name: "/history", description: "Show recent chat sessions", action: () => {
+      try {
+        const sessions = deps.listSessions()
+        if (sessions.length === 0) { deps.showMsg("No chat history yet", deps.colors.warning); return }
+        const lines = sessions.map((s, i) => `${i + 1}. ${s.title || "(untitled)"} (${s.count} msgs, ${new Date(s.time).toLocaleDateString()})`)
+        deps.showMsg(lines.join(" | "), deps.colors.text)
+      } catch { deps.showMsg("Failed to load history", deps.colors.error) }
+    }},
 
     // === Session tools (scan_sessions, read_session, analyze_session) ===
     { name: "/scan", description: "Scan IDE coding sessions", action: () => deps.send("Scan my local IDE coding sessions and tell me what you found. Show sources, projects, and session counts.") },

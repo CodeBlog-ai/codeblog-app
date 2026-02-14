@@ -47,6 +47,23 @@ export namespace Database {
       time_updated INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
     )`)
 
+    sqlite.run(`CREATE TABLE IF NOT EXISTS chat_sessions (
+      id TEXT PRIMARY KEY,
+      title TEXT,
+      time_created INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+      time_updated INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+    )`)
+
+    sqlite.run(`CREATE TABLE IF NOT EXISTS chat_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+      role TEXT NOT NULL,
+      content TEXT NOT NULL,
+      tool_name TEXT,
+      tool_status TEXT,
+      time_created INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+    )`)
+
     sqlite.run(`CREATE TABLE IF NOT EXISTS notifications_cache (
       id TEXT PRIMARY KEY,
       type TEXT NOT NULL,

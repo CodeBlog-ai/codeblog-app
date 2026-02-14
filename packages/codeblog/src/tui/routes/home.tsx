@@ -6,6 +6,7 @@ import { useTheme } from "../context/theme"
 import { createCommands, LOGO, TIPS } from "../commands"
 import { TOOL_LABELS } from "../../ai/tools"
 import { mask, saveProvider } from "../../ai/configure"
+import { ChatHistory } from "../../storage/chat"
 
 interface ChatMsg {
   role: "user" | "assistant" | "tool"
@@ -37,7 +38,35 @@ export function Home(props: {
   const [streamText, setStreamText] = createSignal("")
   let abortCtrl: AbortController | undefined
   let escCooldown = 0
+  let sessionId = ""
   const chatting = createMemo(() => messages().length > 0 || streaming())
+
+  function ensureSession() {
+    if (!sessionId) {
+      sessionId = crypto.randomUUID()
+      try { ChatHistory.create(sessionId) } catch {}
+    }
+  }
+
+  function saveChat() {
+    if (!sessionId) return
+    try { ChatHistory.save(sessionId, messages()) } catch {}
+  }
+
+  function resumeSession(sid?: string) {
+    try {
+      if (!sid) {
+        const sessions = ChatHistory.list(1)
+        if (sessions.length === 0) { showMsg("No previous sessions", theme.colors.warning); return }
+        sid = sessions[0].id
+      }
+      const msgs = ChatHistory.load(sid)
+      if (msgs.length === 0) { showMsg("Session is empty", theme.colors.warning); return }
+      sessionId = sid
+      setMessages(msgs as ChatMsg[])
+      showMsg("Resumed session", theme.colors.success)
+    } catch { showMsg("Failed to resume", theme.colors.error) }
+  }
 
   // Shimmer animation for thinking state (like Claude Code)
   const SHIMMER_WORDS = ["Thinking", "Reasoning", "Composing", "Reflecting", "Analyzing", "Processing"]
@@ -65,6 +94,7 @@ export function Home(props: {
 
   function clearChat() {
     setMessages([]); setStreamText(""); setStreaming(false); setMessage("")
+    sessionId = ""
   }
 
   const commands = createCommands({
@@ -80,6 +110,8 @@ export function Home(props: {
     },
     setMode: theme.setMode,
     send,
+    resume: resumeSession,
+    listSessions: () => { try { return ChatHistory.list(10) } catch { return [] } },
     colors: theme.colors,
   })
 
@@ -110,6 +142,7 @@ export function Home(props: {
 
   async function send(text: string) {
     if (!text.trim() || streaming()) return
+    ensureSession()
     const userMsg: ChatMsg = { role: "user", content: text.trim() }
     const prev = messages()
     setMessages([...prev, userMsg])
@@ -161,6 +194,7 @@ export function Home(props: {
             return [...updated, { role: "assistant" as const, content: `Error: ${err.message}` }]
           })
           setStreamText(""); setStreaming(false)
+          saveChat()
         },
       }, mid, abortCtrl.signal)
       abortCtrl = undefined
@@ -169,6 +203,7 @@ export function Home(props: {
       setMessages((p) => [...p, { role: "assistant", content: `Error: ${msg}` }])
       setStreamText("")
       setStreaming(false)
+      saveChat()
     }
   }
 
@@ -329,7 +364,7 @@ export function Home(props: {
 
       {/* When chatting: messages fill the space */}
       <Show when={chatting()}>
-        <box flexDirection="column" flexGrow={1} paddingTop={1}>
+        <box flexDirection="column" flexGrow={1} paddingTop={1} overflow="scroll">
           <For each={messages()}>
             {(msg) => (
               <box flexShrink={0}>
