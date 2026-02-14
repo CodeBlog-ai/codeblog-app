@@ -58,13 +58,57 @@ export function Chat() {
     }
   }
 
+  function handleCommand(cmd: string) {
+    const parts = cmd.split(/\s+/)
+    const name = parts[0]
+
+    if (name === "/clear") {
+      setMessages([])
+      setStreamText("")
+      return
+    }
+
+    if (name === "/model") {
+      const id = parts[1]
+      if (!id) {
+        setMessages((p) => [...p, { role: "assistant", content: `Current model: ${model()}\nUsage: /model <model-id>` }])
+        return
+      }
+      setModel(id)
+      setMessages((p) => [...p, { role: "assistant", content: `Switched to model: ${id}` }])
+      return
+    }
+
+    if (name === "/help") {
+      setMessages((p) => [...p, {
+        role: "assistant",
+        content: [
+          "Available commands:",
+          "  /model <id>  — switch AI model (e.g. /model gpt-4o)",
+          "  /model       — show current model",
+          "  /clear       — clear conversation",
+          "  /help        — show this help",
+          "",
+          "Type any text and press Enter to chat with AI.",
+        ].join("\n"),
+      }])
+      return
+    }
+
+    setMessages((p) => [...p, { role: "assistant", content: `Unknown command: ${name}. Type /help for available commands.` }])
+  }
+
   useKeyboard((evt) => {
     if (!inputMode()) return
 
     if (evt.name === "return" && !evt.shift) {
-      const text = inputBuf()
+      const text = inputBuf().trim()
       setInputBuf("")
-      send(text)
+      if (text.startsWith("/")) {
+        handleCommand(text)
+      } else {
+        send(text)
+      }
       evt.preventDefault()
       return
     }
@@ -97,7 +141,7 @@ export function Chat() {
         </text>
         <text fg="#6a737c">{model()}</text>
         <box flexGrow={1} />
-        <text fg="#6a737c">esc:back</text>
+        <text fg="#6a737c">esc:back  /help</text>
       </box>
 
       {/* Messages */}

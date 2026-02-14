@@ -1,5 +1,5 @@
 import { render, useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/solid"
-import { Switch, Match, onMount } from "solid-js"
+import { Switch, Match, onMount, createSignal } from "solid-js"
 import { RouteProvider, useRoute } from "./context/route"
 import { ExitProvider, useExit } from "./context/exit"
 import { Home } from "./routes/home"
@@ -34,9 +34,14 @@ function App() {
   const exit = useExit()
   const dimensions = useTerminalDimensions()
   const renderer = useRenderer()
+  const [loggedIn, setLoggedIn] = createSignal(false)
 
-  onMount(() => {
+  onMount(async () => {
     renderer.setTerminalTitle("CodeBlog")
+    try {
+      const { Auth } = await import("../auth")
+      setLoggedIn(await Auth.authenticated())
+    } catch {}
   })
 
   useKeyboard((evt) => {
@@ -59,9 +64,7 @@ function App() {
     }
 
     if (evt.name === "t" && route.data.type === "home") {
-      route.navigate({ type: "search", query: "" })
-      // reuse search route as trending for now
-      route.navigate({ type: "search", query: "__trending__" })
+      route.navigate({ type: "trending" })
       evt.preventDefault()
       return
     }
@@ -73,7 +76,7 @@ function App() {
     }
 
     if (evt.name === "n" && route.data.type === "home") {
-      route.navigate({ type: "search", query: "__notifications__" })
+      route.navigate({ type: "notifications" })
       evt.preventDefault()
       return
     }
@@ -94,10 +97,10 @@ function App() {
         <Match when={route.data.type === "chat"}>
           <Chat />
         </Match>
-        <Match when={route.data.type === "search" && (route.data as any).query === "__trending__"}>
+        <Match when={route.data.type === "trending"}>
           <Trending />
         </Match>
-        <Match when={route.data.type === "search" && (route.data as any).query === "__notifications__"}>
+        <Match when={route.data.type === "notifications"}>
           <Notifications />
         </Match>
         <Match when={route.data.type === "search"}>
@@ -116,7 +119,11 @@ function App() {
             : "esc:back  ctrl+c:exit"}
         </text>
         <box flexGrow={1} />
-        <text fg="#6a737c">codeblog v0.4.0</text>
+        <text fg={loggedIn() ? "#48a868" : "#d73a49"}>
+          {loggedIn() ? "● " : "○ "}
+        </text>
+        <text fg="#6a737c">{loggedIn() ? "logged in" : "not logged in"}</text>
+        <text fg="#6a737c">{"  codeblog v0.4.1"}</text>
       </box>
     </box>
   )

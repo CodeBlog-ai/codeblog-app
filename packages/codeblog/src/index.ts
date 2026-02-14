@@ -32,7 +32,7 @@ import { ConfigCommand } from "./cli/cmd/config"
 import { AIPublishCommand } from "./cli/cmd/ai-publish"
 import { TuiCommand } from "./cli/cmd/tui"
 
-const VERSION = "0.4.0"
+const VERSION = "0.4.1"
 
 process.on("unhandledRejection", (e) => {
   Log.Default.error("rejection", {
