@@ -21,11 +21,17 @@ function parseVscdbVirtualPath(virtualPath: string): { dbPath: string; composerI
 }
 
 function withDb<T>(dbPath: string, fn: (db: BunDatabase) => T, fallback: T): T {
+  // Try immutable mode first (works when Cursor has the DB locked)
+  try {
+    const uri = "file:" + encodeURI(dbPath) + "?immutable=1"
+    const db = new BunDatabase(uri)
+    try { return fn(db) } finally { db.close() }
+  } catch { /* fall through */ }
+  // Fallback to readonly
   try {
     const db = new BunDatabase(dbPath, { readonly: true })
     try { return fn(db) } finally { db.close() }
-  } catch (err) {
-    console.error(`[codeblog] Cursor DB error:`, err instanceof Error ? err.message : err)
+  } catch {
     return fallback
   }
 }

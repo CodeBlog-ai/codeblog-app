@@ -173,14 +173,6 @@ export namespace AIProvider {
     return {}
   }
 
-  // Refresh models.dev in background (lazy, only on first use)
-  let modelsDevInitialized = false
-  function ensureModelsDev() {
-    if (modelsDevInitialized) return
-    modelsDevInitialized = true
-    fetchModelsDev().catch(() => {})
-  }
-
   // ---------------------------------------------------------------------------
   // Get API key for a provider
   // ---------------------------------------------------------------------------
@@ -255,13 +247,13 @@ export namespace AIProvider {
       return getLanguageModel(builtin.providerID, id, apiKey, undefined, base)
     }
 
-    // Try models.dev
+    // Try models.dev (only if the user has a key for that provider)
     const modelsDev = await fetchModelsDev()
     for (const [providerID, provider] of Object.entries(modelsDev)) {
       const p = provider as any
       if (p.models?.[id]) {
         const apiKey = await getApiKey(providerID)
-        if (!apiKey) throw noKeyError(providerID)
+        if (!apiKey) continue
         const npm = p.models[id].provider?.npm || p.npm || "@ai-sdk/openai-compatible"
         const base = await getBaseUrl(providerID)
         return getLanguageModel(providerID, id, apiKey, npm, base || p.api)
@@ -278,6 +270,19 @@ export namespace AIProvider {
       return getLanguageModel(providerID, mid, apiKey, undefined, base)
     }
 
+    // Fallback: try any configured provider that has a base_url (custom/openai-compatible)
+    const cfg = await Config.load()
+    if (cfg.providers) {
+      for (const [providerID, p] of Object.entries(cfg.providers)) {
+        if (!p.api_key) continue
+        const base = p.base_url || (await getBaseUrl(providerID))
+        if (base) {
+          log.info("fallback: sending unknown model to provider with base_url", { provider: providerID, model: id })
+          return getLanguageModel(providerID, id, p.api_key, undefined, base)
+        }
+      }
+    }
+
     throw new Error(`Unknown model: ${id}. Run: codeblog config --list`)
   }
 
@@ -291,8 +296,12 @@ export namespace AIProvider {
     if (!sdk) {
       const createFn = BUNDLED_PROVIDERS[pkg]
       if (!createFn) throw new Error(`No bundled provider for ${pkg}. Provider ${providerID} not supported.`)
-      const opts: Record<string, unknown> = { apiKey }
-      if (baseURL) opts.baseURL = baseURL
+      const opts: Record<string, unknown> = { apiKey, name: providerID }
+      if (baseURL) {
+        // @ai-sdk/openai-compatible expects baseURL to include /v1
+        const clean = baseURL.replace(/\/+$/, "")
+        opts.baseURL = clean.endsWith("/v1") ? clean : `${clean}/v1`
+      }
       if (providerID === "openrouter") {
         opts.headers = { "HTTP-Referer": "https://codeblog.ai/", "X-Title": "codeblog" }
       }
@@ -340,14 +349,108 @@ export namespace AIProvider {
   }
 
   // ---------------------------------------------------------------------------
+  // Fetch models dynamically from a provider's /v1/models endpoint
+  // ---------------------------------------------------------------------------
+  export async function fetchModels(providerID: string): Promise<ModelInfo[]> {
+    const apiKey = await getApiKey(providerID)
+    if (!apiKey) return []
+    const base = await getBaseUrl(providerID)
+    if (!base) {
+      // For known providers without custom base URL, use models.dev
+      const modelsDev = await fetchModelsDev()
+      const p = modelsDev[providerID] as any
+      if (p?.models) {
+        return Object.entries(p.models).map(([id, m]: [string, any]) => ({
+          id,
+          providerID,
+          name: m.name || id,
+          contextWindow: m.limit?.context || 0,
+          outputTokens: m.limit?.output || 0,
+        }))
+      }
+      return []
+    }
+    // Try OpenAI-compatible /v1/models
+    try {
+      const url = `${base.replace(/\/+$/, "").replace(/\/v1$/, "")}/v1/models`
+      const r = await fetch(url, {
+        headers: { Authorization: `Bearer ${apiKey}` },
+        signal: AbortSignal.timeout(10000),
+      })
+      if (!r.ok) return []
+      const json = await r.json() as any
+      const models = json.data || json.models || []
+      return models.map((m: any) => ({
+        id: m.id || m.name || "",
+        providerID,
+        name: m.id || m.name || "",
+        contextWindow: m.context_length || m.context_window || 0,
+        outputTokens: m.max_output_tokens || m.max_tokens || 0,
+      })).filter((m: ModelInfo) => m.id)
+    } catch {
+      return []
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Fetch models for all configured providers
+  // ---------------------------------------------------------------------------
+  export async function fetchAllModels(): Promise<ModelInfo[]> {
+    const cfg = await Config.load()
+    const seen = new Set<string>()
+    const result: ModelInfo[] = []
+
+    // Collect configured provider IDs (check env vars + config in one pass)
+    const ids = new Set<string>()
+    for (const [providerID, envKeys] of Object.entries(PROVIDER_ENV)) {
+      if (envKeys.some((k) => process.env[k])) ids.add(providerID)
+      else if (cfg.providers?.[providerID]?.api_key) ids.add(providerID)
+    }
+    if (cfg.providers) {
+      for (const providerID of Object.keys(cfg.providers)) {
+        if (cfg.providers[providerID].api_key) ids.add(providerID)
+      }
+    }
+
+    const settled = await Promise.allSettled([...ids].map((id) => fetchModels(id)))
+    for (const entry of settled) {
+      if (entry.status !== "fulfilled") continue
+      for (const m of entry.value) {
+        const key = `${m.providerID}/${m.id}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        result.push(m)
+      }
+    }
+
+    return result
+  }
+
+  // ---------------------------------------------------------------------------
   // List available models with key status (for codeblog config --list)
   // ---------------------------------------------------------------------------
   export async function available(): Promise<Array<{ model: ModelInfo; hasKey: boolean }>> {
     const result: Array<{ model: ModelInfo; hasKey: boolean }> = []
-    for (const model of Object.values(BUILTIN_MODELS)) {
-      const key = await getApiKey(model.providerID)
-      result.push({ model, hasKey: !!key })
+    const seen = new Set<string>()
+
+    // Dynamic models from configured providers (always have keys)
+    const dynamic = await fetchAllModels()
+    for (const model of dynamic) {
+      const key = `${model.providerID}/${model.id}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      result.push({ model, hasKey: true })
     }
+
+    // Merge builtin models (may or may not have keys)
+    for (const model of Object.values(BUILTIN_MODELS)) {
+      const key = `${model.providerID}/${model.id}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      const apiKey = await getApiKey(model.providerID)
+      result.push({ model, hasKey: !!apiKey })
+    }
+
     return result
   }
 

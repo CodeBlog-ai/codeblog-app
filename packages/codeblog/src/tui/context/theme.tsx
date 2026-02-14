@@ -440,7 +440,7 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
     const saved = load()
     const [store, setStore] = createStore({
       name: saved?.name || "codeblog",
-      mode: (saved?.mode || "dark") as "dark" | "light",
+      mode: (saved?.mode || "light") as "dark" | "light",
       needsSetup: !saved,
     })
 

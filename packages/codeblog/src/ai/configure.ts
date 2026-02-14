@@ -1,0 +1,89 @@
+// AI provider auto-detection and configuration
+
+function looksLikeApi(r: Response) {
+  const ct = r.headers.get("content-type") || ""
+  return ct.includes("json") || ct.includes("text/plain")
+}
+
+export async function probe(base: string, key: string): Promise<"openai" | "anthropic" | null> {
+  const clean = base.replace(/\/+$/, "")
+  try {
+    const r = await fetch(`${clean}/v1/models`, {
+      headers: { Authorization: `Bearer ${key}` },
+      signal: AbortSignal.timeout(8000),
+    })
+    if (r.ok || ((r.status === 401 || r.status === 403) && looksLikeApi(r))) return "openai"
+  } catch {}
+  try {
+    const r = await fetch(`${clean}/v1/messages`, {
+      method: "POST",
+      headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: "test", max_tokens: 1, messages: [] }),
+      signal: AbortSignal.timeout(8000),
+    })
+    if (r.status !== 404 && looksLikeApi(r)) return "anthropic"
+  } catch {}
+  return null
+}
+
+const KEY_PREFIX_MAP: Record<string, string> = {
+  "sk-ant-": "anthropic",
+  "AIza": "google",
+  "xai-": "xai",
+  "gsk_": "groq",
+  "sk-or-": "openrouter",
+  "pplx-": "perplexity",
+}
+
+const ENV_MAP: Record<string, string> = {
+  anthropic: "ANTHROPIC_API_KEY",
+  openai: "OPENAI_API_KEY",
+  google: "GOOGLE_GENERATIVE_AI_API_KEY",
+  xai: "XAI_API_KEY",
+  groq: "GROQ_API_KEY",
+  openrouter: "OPENROUTER_API_KEY",
+  perplexity: "PERPLEXITY_API_KEY",
+  "openai-compatible": "OPENAI_COMPATIBLE_API_KEY",
+}
+
+export function detectProvider(key: string) {
+  for (const [prefix, provider] of Object.entries(KEY_PREFIX_MAP)) {
+    if (key.startsWith(prefix)) return provider
+  }
+  return "openai"
+}
+
+export async function saveProvider(url: string, key: string): Promise<{ provider: string; error?: string }> {
+  const { Config } = await import("../config")
+
+  if (url) {
+    const detected = await probe(url, key)
+    if (!detected) return { provider: "", error: "Could not connect. Check URL and key." }
+
+    const provider = detected === "anthropic" ? "anthropic" : "openai-compatible"
+    const envKey = detected === "anthropic" ? "ANTHROPIC_API_KEY" : "OPENAI_COMPATIBLE_API_KEY"
+    const envBase = detected === "anthropic" ? "ANTHROPIC_BASE_URL" : "OPENAI_COMPATIBLE_BASE_URL"
+    process.env[envKey] = key
+    process.env[envBase] = url
+
+    const cfg = await Config.load()
+    const providers = cfg.providers || {}
+    providers[provider] = { api_key: key, base_url: url }
+    await Config.save({ providers })
+    return { provider: `${detected} format` }
+  }
+
+  const provider = detectProvider(key)
+  if (ENV_MAP[provider]) process.env[ENV_MAP[provider]] = key
+
+  const cfg = await Config.load()
+  const providers = cfg.providers || {}
+  providers[provider] = { api_key: key }
+  await Config.save({ providers })
+  return { provider }
+}
+
+export function mask(s: string) {
+  if (s.length <= 8) return s
+  return s.slice(0, 4) + "\u2022".repeat(Math.min(s.length - 8, 20)) + s.slice(-4)
+}

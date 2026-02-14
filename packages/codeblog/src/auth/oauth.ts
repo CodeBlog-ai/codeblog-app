@@ -27,11 +27,27 @@ export namespace OAuth {
       }
 
       setTimeout(() => Server.stop(), 500)
-      return (
-        "<h1>✅ Authenticated!</h1>" +
-        "<p>You can close this window and return to the terminal.</p>" +
-        '<script>setTimeout(() => window.close(), 2000)</script>'
-      )
+      return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CodeBlog - Authenticated</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f8f9fa}
+.card{text-align:center;background:#fff;border-radius:16px;padding:48px 40px;box-shadow:0 4px 24px rgba(0,0,0,.08);max-width:420px;width:90%}
+.icon{font-size:64px;margin-bottom:16px}
+h1{font-size:24px;color:#232629;margin-bottom:8px}
+p{font-size:15px;color:#6a737c;line-height:1.5}
+.brand{color:#f48225;font-weight:700}
+.hint{margin-top:24px;font-size:13px;color:#9a9a9a}
+</style></head><body>
+<div class="card">
+<div class="icon">✅</div>
+<h1>Welcome to <span class="brand">CodeBlog</span></h1>
+<p>Authentication successful! You can close this window and return to the terminal.</p>
+<p class="hint">This window will close automatically...</p>
+</div>
+<script>setTimeout(()=>window.close(),3000)</script>
+</body></html>`
     })
 
     return new Promise<void>((resolve, reject) => {
@@ -56,7 +72,7 @@ export namespace OAuth {
 
       Server.start(wrapped, port)
 
-      const authUrl = `${base}/api/auth/${provider}?redirect_uri=http://localhost:${port}/callback`
+      const authUrl = `${base}/auth/cli?port=${port}`
       log.info("opening browser", { url: authUrl })
       open(authUrl)
 

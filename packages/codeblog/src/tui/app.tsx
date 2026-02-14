@@ -4,8 +4,8 @@ import { RouteProvider, useRoute } from "./context/route"
 import { ExitProvider, useExit } from "./context/exit"
 import { ThemeProvider, useTheme } from "./context/theme"
 import { Home } from "./routes/home"
-import { Chat } from "./routes/chat"
-import { ThemeSetup, ThemePicker } from "./routes/setup"
+import { ThemePicker } from "./routes/setup"
+import { ModelPicker } from "./routes/model"
 
 import pkg from "../../package.json"
 const VERSION = pkg.version
@@ -42,6 +42,23 @@ function App() {
   const [username, setUsername] = createSignal("")
   const [hasAI, setHasAI] = createSignal(false)
   const [aiProvider, setAiProvider] = createSignal("")
+  const [modelName, setModelName] = createSignal("")
+
+  async function refreshAI() {
+    try {
+      const { AIProvider } = await import("../ai/provider")
+      const has = await AIProvider.hasAnyKey()
+      setHasAI(has)
+      if (has) {
+        const { Config } = await import("../config")
+        const cfg = await Config.load()
+        const model = cfg.model || AIProvider.DEFAULT_MODEL
+        setModelName(model)
+        const info = AIProvider.BUILTIN_MODELS[model]
+        setAiProvider(info?.providerID || model.split("/")[0] || "ai")
+      }
+    } catch {}
+  }
 
   onMount(async () => {
     renderer.setTerminalTitle("CodeBlog")
@@ -52,24 +69,12 @@ function App() {
       const authenticated = await Auth.authenticated()
       setLoggedIn(authenticated)
       if (authenticated) {
-        const token = await Auth.load()
+        const token = await Auth.get()
         if (token?.username) setUsername(token.username)
       }
     } catch {}
 
-    // Check AI provider status
-    try {
-      const { AIProvider } = await import("../ai/provider")
-      const has = await AIProvider.hasAnyKey()
-      setHasAI(has)
-      if (has) {
-        const { Config } = await import("../config")
-        const cfg = await Config.load()
-        const model = cfg.model || AIProvider.DEFAULT_MODEL
-        const info = AIProvider.BUILTIN_MODELS[model]
-        setAiProvider(info?.name || model)
-      }
-    } catch {}
+    await refreshAI()
   })
 
   useKeyboard((evt) => {
@@ -79,16 +84,7 @@ function App() {
       return
     }
 
-    // Home screen shortcuts
-    if (route.data.type === "home") {
-      if (evt.name === "q" && !evt.ctrl) {
-        exit()
-        evt.preventDefault()
-        return
-      }
-    }
-
-    // Back navigation
+    // Back navigation from sub-pages
     if (evt.name === "escape" && route.data.type !== "home") {
       route.navigate({ type: "home" })
       evt.preventDefault()
@@ -99,57 +95,68 @@ function App() {
   return (
     <box flexDirection="column" width={dimensions().width} height={dimensions().height}>
       <Switch>
-        <Match when={theme.needsSetup}>
-          <ThemeSetup />
-        </Match>
         <Match when={route.data.type === "home"}>
           <Home
             loggedIn={loggedIn()}
             username={username()}
             hasAI={hasAI()}
             aiProvider={aiProvider()}
+            modelName={modelName()}
             onLogin={async () => {
               try {
                 const { OAuth } = await import("../auth/oauth")
                 await OAuth.login("github")
                 const { Auth } = await import("../auth")
                 setLoggedIn(true)
-                const token = await Auth.load()
+                const token = await Auth.get()
                 if (token?.username) setUsername(token.username)
               } catch {}
             }}
+            onLogout={() => { setLoggedIn(false); setUsername("") }}
+            onAIConfigured={refreshAI}
           />
-        </Match>
-        <Match when={route.data.type === "chat"}>
-          <Chat />
         </Match>
         <Match when={route.data.type === "theme"}>
           <ThemePicker onDone={() => route.navigate({ type: "home" })} />
         </Match>
+        <Match when={route.data.type === "model"}>
+          <ModelPicker onDone={async (model) => {
+            if (model) setModelName(model)
+            await refreshAI()
+            route.navigate({ type: "home" })
+          }} />
+        </Match>
       </Switch>
 
-      {/* Status bar */}
-      <box paddingLeft={2} paddingRight={2} paddingTop={1} paddingBottom={1} flexShrink={0} flexDirection="row">
-        <text fg={theme.colors.textMuted}>
-          {route.data.type === "home"
-            ? "type to chat · /help · /theme · q:quit"
-            : "esc:back · ctrl+c:exit"}
-        </text>
+      {/* Status bar — like OpenCode */}
+      <box paddingLeft={2} paddingRight={2} flexShrink={0} flexDirection="row" gap={2}>
+        <text fg={theme.colors.textMuted}>{process.cwd()}</text>
         <box flexGrow={1} />
         <Show when={hasAI()}>
-          <text fg={theme.colors.success}>{"● "}</text>
-          <text fg={theme.colors.textMuted}>{aiProvider()}</text>
-          <text fg={theme.colors.textMuted}>{"  "}</text>
+          <text fg={theme.colors.text}>
+            <span style={{ fg: theme.colors.success }}>● </span>
+            {modelName()}
+          </text>
         </Show>
         <Show when={!hasAI()}>
-          <text fg={theme.colors.error}>{"○ "}</text>
-          <text fg={theme.colors.textMuted}>{"no AI  "}</text>
+          <text fg={theme.colors.text}>
+            <span style={{ fg: theme.colors.error }}>○ </span>
+            no AI <span style={{ fg: theme.colors.textMuted }}>/ai</span>
+          </text>
         </Show>
-        <text fg={loggedIn() ? theme.colors.success : theme.colors.error}>
-          {loggedIn() ? "● " : "○ "}
-        </text>
-        <text fg={theme.colors.textMuted}>{loggedIn() ? username() || "logged in" : "not logged in"}</text>
-        <text fg={theme.colors.textMuted}>{`  v${VERSION}`}</text>
+        <Show when={loggedIn()}>
+          <text fg={theme.colors.text}>
+            <span style={{ fg: theme.colors.success }}>● </span>
+            {username() || "logged in"}
+          </text>
+        </Show>
+        <Show when={!loggedIn()}>
+          <text fg={theme.colors.text}>
+            <span style={{ fg: theme.colors.error }}>○ </span>
+            <span style={{ fg: theme.colors.textMuted }}>/login</span>
+          </text>
+        </Show>
+        <text fg={theme.colors.textMuted}>v{VERSION}</text>
       </box>
     </box>
   )
