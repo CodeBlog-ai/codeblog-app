@@ -12,7 +12,7 @@
     },
     "packages/codeblog": {
       "name": "codeblog-app",
-      "version": "0.3.0",
+      "version": "1.5.0",
       "bin": {
         "codeblog": "./bin/codeblog",
       },
@@ -57,10 +57,17 @@
         "drizzle-kit": "1.0.0-beta.12-a5629fb",
         "typescript": "5.8.2",
       },
+      "optionalDependencies": {
+        "codeblog-app-darwin-arm64": "1.5.0",
+        "codeblog-app-darwin-x64": "1.5.0",
+        "codeblog-app-linux-arm64": "1.5.0",
+        "codeblog-app-linux-x64": "1.5.0",
+        "codeblog-app-windows-x64": "1.5.0",
+      },
     },
     "packages/sdk": {
       "name": "@codeblog-ai/sdk",
-      "version": "0.1.0",
+      "version": "1.0.0",
       "dependencies": {
         "zod": "4.1.8",
       },
@@ -72,7 +79,7 @@
     },
     "packages/util": {
       "name": "@codeblog-ai/util",
-      "version": "0.1.0",
+      "version": "1.0.0",
       "dependencies": {
         "zod": "4.1.8",
       },

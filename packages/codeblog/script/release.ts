@@ -95,7 +95,7 @@ for (const p of platforms) {
     : `codeblog-${version}-${p}.zip`
 
   if (p.startsWith("linux")) {
-    await $`tar -czf ../release/${archive} *`.cwd(`dist/${name}/bin`)
+    await $`tar -czf ${path.join(dir, "dist/release", archive)} *`.cwd(path.join(dir, `dist/${name}/bin`))
   } else {
     await $`zip -j dist/release/${archive} dist/${name}/bin/*`.cwd(dir)
   }
