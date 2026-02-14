@@ -6,6 +6,7 @@ import { Home } from "./routes/home"
 import { Chat } from "./routes/chat"
 import { Trending } from "./routes/trending"
 import { Search } from "./routes/search"
+import { Post } from "./routes/post"
 
 export function tui(input: { onExit?: () => Promise<void> }) {
   return new Promise<void>(async (resolve) => {
@@ -91,6 +92,9 @@ function App() {
         </Match>
         <Match when={route.data.type === "search"}>
           <Search />
+        </Match>
+        <Match when={route.data.type === "post"}>
+          <Post />
         </Match>
       </Switch>
 

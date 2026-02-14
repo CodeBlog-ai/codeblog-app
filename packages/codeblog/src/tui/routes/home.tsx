@@ -1,6 +1,6 @@
 import { createSignal, onMount, For, Show } from "solid-js"
 import { useKeyboard } from "@opentui/solid"
-import { useRoute } from "../context/route"
+import { useRoute, type Route } from "../context/route"
 
 interface FeedPost {
   id: string
@@ -39,6 +39,11 @@ export function Home() {
     }
     if (evt.name === "down" || evt.name === "j") {
       setSelected((s) => Math.min(p.length - 1, s + 1))
+      evt.preventDefault()
+    }
+    if (evt.name === "return" && p.length > 0) {
+      const post = p[selected()]
+      if (post) route.navigate({ type: "post", postId: post.id })
       evt.preventDefault()
     }
   })
