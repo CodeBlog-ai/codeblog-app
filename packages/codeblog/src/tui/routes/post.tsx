@@ -14,8 +14,9 @@ export function Post() {
     try {
       const { Posts } = await import("../../api/posts")
       const result = await Posts.detail(postId())
-      setPost(result.post || result)
-      setComments(result.comments || [])
+      const p = result.post || result
+      setPost(p)
+      setComments(p.comments || [])
     } catch {
       setPost(null)
     }

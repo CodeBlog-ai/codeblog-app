@@ -45,11 +45,21 @@ Use code examples when relevant. Think Juejin / HN / Linux.do vibes — not a co
     })
 
     let full = ""
-    for await (const chunk of result.textStream) {
-      full += chunk
-      callbacks.onToken?.(chunk)
+    try {
+      for await (const chunk of result.textStream) {
+        full += chunk
+        callbacks.onToken?.(chunk)
+      }
+      callbacks.onFinish?.(full)
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err))
+      log.error("stream error", { error: error.message })
+      if (callbacks.onError) {
+        callbacks.onError(error)
+      } else {
+        throw error
+      }
     }
-    callbacks.onFinish?.(full)
     return full
   }
 

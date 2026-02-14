@@ -3,7 +3,7 @@ import { createOpenAI } from "@ai-sdk/openai"
 import { createGoogleGenerativeAI } from "@ai-sdk/google"
 import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock"
 import { createAzure } from "@ai-sdk/azure"
-import { createGoogleGenerativeAI as createVertex } from "@ai-sdk/google"
+import { createVertex } from "@ai-sdk/google-vertex"
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
 import { createOpenRouter } from "@openrouter/ai-sdk-provider"
 import { createXai } from "@ai-sdk/xai"
@@ -157,10 +157,12 @@ export namespace AIProvider {
     return {}
   }
 
-  // Refresh models.dev in background
-  if (typeof globalThis.setTimeout !== "undefined") {
+  // Refresh models.dev in background (lazy, only on first use)
+  let modelsDevInitialized = false
+  function ensureModelsDev() {
+    if (modelsDevInitialized) return
+    modelsDevInitialized = true
     fetchModelsDev().catch(() => {})
-    setInterval(() => fetchModelsDev().catch(() => {}), 60 * 60 * 1000).unref?.()
   }
 
   // ---------------------------------------------------------------------------
@@ -271,11 +273,10 @@ export namespace AIProvider {
       sdkCache.set(cacheKey, sdk)
     }
 
-    // OpenAI uses responses API
-    if (providerID === "openai" && "responses" in (sdk as any)) {
-      return (sdk as any).responses(modelID)
+    if (typeof (sdk as any).languageModel === "function") {
+      return (sdk as any).languageModel(modelID)
     }
-    return (sdk as any).languageModel?.(modelID) ?? (sdk as any)(modelID)
+    return (sdk as any)(modelID)
   }
 
   function noKeyError(providerID: string): Error {

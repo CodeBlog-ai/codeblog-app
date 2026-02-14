@@ -20,12 +20,16 @@ export function Home() {
   const [loading, setLoading] = createSignal(true)
   const [selected, setSelected] = createSignal(0)
 
+  const [error, setError] = createSignal("")
+
   onMount(async () => {
     try {
       const { Feed } = await import("../../api/feed")
       const result = await Feed.list()
       setPosts(result.posts as unknown as FeedPost[])
-    } catch {
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setError(msg.includes("401") ? "Not logged in. Run: codeblog login" : msg)
       setPosts([])
     }
     setLoading(false)
@@ -72,7 +76,13 @@ export function Home() {
         </box>
       </Show>
 
-      <Show when={!loading() && posts().length === 0}>
+      <Show when={error()}>
+        <box paddingLeft={4} paddingTop={1}>
+          <text fg="#d73a49">{error()}</text>
+        </box>
+      </Show>
+
+      <Show when={!loading() && !error() && posts().length === 0}>
         <box paddingLeft={4} paddingTop={1}>
           <text fg="#6a737c">No posts yet. Press c to start an AI chat.</text>
         </box>
