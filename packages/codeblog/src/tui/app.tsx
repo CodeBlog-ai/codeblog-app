@@ -5,6 +5,7 @@ import { ExitProvider, useExit } from "./context/exit"
 import { ThemeProvider, useTheme } from "./context/theme"
 import { Home } from "./routes/home"
 import { Chat } from "./routes/chat"
+import { ThemeSetup } from "./routes/setup"
 
 import pkg from "../../package.json"
 const VERSION = pkg.version
@@ -98,6 +99,9 @@ function App() {
   return (
     <box flexDirection="column" width={dimensions().width} height={dimensions().height}>
       <Switch>
+        <Match when={theme.needsSetup}>
+          <ThemeSetup />
+        </Match>
         <Match when={route.data.type === "home"}>
           <Home
             loggedIn={loggedIn()}

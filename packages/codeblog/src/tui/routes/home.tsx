@@ -27,7 +27,7 @@ const HELP_TEXT = [
   "  /notifications      View notifications",
   "  /dashboard          Your stats",
   "  /models             List available AI models",
-  "  /theme [name]       Switch theme (codeblog, dracula, nord, tokyonight, monokai, github, solarized)",
+  "  /theme [name]       Switch theme (codeblog, dracula, nord, tokyonight, monokai, github, solarized, catppuccin, rosepine, gruvbox, onedark, kanagawa, everforest)",
   "  /dark | /light       Toggle dark/light mode",
   "  /help               Show this help",
   "  /exit               Exit",

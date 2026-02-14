@@ -1,3 +1,4 @@
+import path from "path"
 import { createStore } from "solid-js/store"
 import { createSimpleContext } from "./helper"
 
@@ -223,6 +224,180 @@ const solarized: ThemeDef = {
   },
 }
 
+const catppuccin: ThemeDef = {
+  dark: {
+    text: "#cdd6f4",
+    textMuted: "#6c7086",
+    primary: "#89b4fa",
+    accent: "#cba6f7",
+    success: "#a6e3a1",
+    error: "#f38ba8",
+    warning: "#f9e2af",
+    input: "#cdd6f4",
+    cursor: "#6c7086",
+    logo1: "#cba6f7",
+    logo2: "#89b4fa",
+  },
+  light: {
+    text: "#4c4f69",
+    textMuted: "#8c8fa1",
+    primary: "#1e66f5",
+    accent: "#8839ef",
+    success: "#40a02b",
+    error: "#d20f39",
+    warning: "#df8e1d",
+    input: "#4c4f69",
+    cursor: "#8c8fa1",
+    logo1: "#8839ef",
+    logo2: "#1e66f5",
+  },
+}
+
+const rosepine: ThemeDef = {
+  dark: {
+    text: "#e0def4",
+    textMuted: "#6e6a86",
+    primary: "#c4a7e7",
+    accent: "#ebbcba",
+    success: "#31748f",
+    error: "#eb6f92",
+    warning: "#f6c177",
+    input: "#e0def4",
+    cursor: "#6e6a86",
+    logo1: "#ebbcba",
+    logo2: "#c4a7e7",
+  },
+  light: {
+    text: "#575279",
+    textMuted: "#9893a5",
+    primary: "#907aa9",
+    accent: "#d7827e",
+    success: "#286983",
+    error: "#b4637a",
+    warning: "#ea9d34",
+    input: "#575279",
+    cursor: "#9893a5",
+    logo1: "#d7827e",
+    logo2: "#907aa9",
+  },
+}
+
+const gruvbox: ThemeDef = {
+  dark: {
+    text: "#ebdbb2",
+    textMuted: "#928374",
+    primary: "#83a598",
+    accent: "#d3869b",
+    success: "#b8bb26",
+    error: "#fb4934",
+    warning: "#fabd2f",
+    input: "#ebdbb2",
+    cursor: "#928374",
+    logo1: "#fe8019",
+    logo2: "#83a598",
+  },
+  light: {
+    text: "#3c3836",
+    textMuted: "#928374",
+    primary: "#076678",
+    accent: "#8f3f71",
+    success: "#79740e",
+    error: "#9d0006",
+    warning: "#b57614",
+    input: "#3c3836",
+    cursor: "#928374",
+    logo1: "#af3a03",
+    logo2: "#076678",
+  },
+}
+
+const onedark: ThemeDef = {
+  dark: {
+    text: "#abb2bf",
+    textMuted: "#5c6370",
+    primary: "#61afef",
+    accent: "#c678dd",
+    success: "#98c379",
+    error: "#e06c75",
+    warning: "#e5c07b",
+    input: "#abb2bf",
+    cursor: "#5c6370",
+    logo1: "#e06c75",
+    logo2: "#61afef",
+  },
+  light: {
+    text: "#383a42",
+    textMuted: "#a0a1a7",
+    primary: "#4078f2",
+    accent: "#a626a4",
+    success: "#50a14f",
+    error: "#e45649",
+    warning: "#c18401",
+    input: "#383a42",
+    cursor: "#a0a1a7",
+    logo1: "#e45649",
+    logo2: "#4078f2",
+  },
+}
+
+const kanagawa: ThemeDef = {
+  dark: {
+    text: "#dcd7ba",
+    textMuted: "#727169",
+    primary: "#7e9cd8",
+    accent: "#957fb8",
+    success: "#76946a",
+    error: "#c34043",
+    warning: "#dca561",
+    input: "#dcd7ba",
+    cursor: "#727169",
+    logo1: "#ff5d62",
+    logo2: "#7e9cd8",
+  },
+  light: {
+    text: "#1f1f28",
+    textMuted: "#8a8980",
+    primary: "#4e8ca2",
+    accent: "#624c83",
+    success: "#6f894e",
+    error: "#c84053",
+    warning: "#cc6d00",
+    input: "#1f1f28",
+    cursor: "#8a8980",
+    logo1: "#d7474b",
+    logo2: "#4e8ca2",
+  },
+}
+
+const everforest: ThemeDef = {
+  dark: {
+    text: "#d3c6aa",
+    textMuted: "#859289",
+    primary: "#7fbbb3",
+    accent: "#d699b6",
+    success: "#a7c080",
+    error: "#e67e80",
+    warning: "#dbbc7f",
+    input: "#d3c6aa",
+    cursor: "#859289",
+    logo1: "#e69875",
+    logo2: "#7fbbb3",
+  },
+  light: {
+    text: "#5c6a72",
+    textMuted: "#939f91",
+    primary: "#3a94c5",
+    accent: "#df69ba",
+    success: "#8da101",
+    error: "#f85552",
+    warning: "#dfa000",
+    input: "#5c6a72",
+    cursor: "#939f91",
+    logo1: "#f57d26",
+    logo2: "#3a94c5",
+  },
+}
+
 export const THEMES: Record<string, ThemeDef> = {
   codeblog,
   dracula,
@@ -231,26 +406,43 @@ export const THEMES: Record<string, ThemeDef> = {
   monokai,
   github,
   solarized,
+  catppuccin,
+  rosepine,
+  gruvbox,
+  onedark,
+  kanagawa,
+  everforest,
 }
 
 export const THEME_NAMES = Object.keys(THEMES)
 
-function detect(): "dark" | "light" {
-  const env = process.env.COLORFGBG
-  if (env) {
-    const parts = env.split(";")
-    const bg = parseInt(parts[parts.length - 1] || "0", 10)
-    if (bg > 6 && bg !== 8) return "light"
-  }
-  return "dark"
+const configPath = (() => {
+  const { Global } = require("../../global") as typeof import("../../global")
+  return path.join(Global.Path.config, "theme.json")
+})()
+
+type SavedTheme = { name: string; mode: "dark" | "light" }
+
+function load(): SavedTheme | null {
+  try {
+    const data = require(configPath)
+    if (data.name && data.mode) return data as SavedTheme
+  } catch {}
+  return null
+}
+
+function save(cfg: SavedTheme) {
+  Bun.write(configPath, JSON.stringify(cfg, null, 2)).catch(() => {})
 }
 
 export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
   name: "Theme",
   init: () => {
+    const saved = load()
     const [store, setStore] = createStore({
-      name: "codeblog" as string,
-      mode: detect() as "dark" | "light",
+      name: saved?.name || "codeblog",
+      mode: (saved?.mode || "dark") as "dark" | "light",
+      needsSetup: !saved,
     })
 
     return {
@@ -260,14 +452,19 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
       },
       get name() { return store.name },
       get mode() { return store.mode },
+      get needsSetup() { return store.needsSetup },
       set(name: string) {
-        if (THEMES[name]) setStore("name", name)
-      },
-      toggle() {
-        setStore("mode", store.mode === "dark" ? "light" : "dark")
+        if (!THEMES[name]) return
+        setStore("name", name)
+        save({ name, mode: store.mode })
       },
       setMode(mode: "dark" | "light") {
         setStore("mode", mode)
+        save({ name: store.name, mode })
+      },
+      finishSetup() {
+        setStore("needsSetup", false)
+        save({ name: store.name, mode: store.mode })
       },
     }
   },
