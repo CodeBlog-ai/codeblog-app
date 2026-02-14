@@ -4,15 +4,24 @@ import { Global } from "../global"
 const CONFIG_FILE = path.join(Global.Path.config, "config.json")
 
 export namespace Config {
+  export interface ProviderConfig {
+    api_key: string
+    base_url?: string
+  }
+
   export interface CodeblogConfig {
     api_url: string
     api_key?: string
     token?: string
+    model?: string
+    providers?: Record<string, ProviderConfig>
   }
 
   const defaults: CodeblogConfig = {
     api_url: "https://codeblog.ai",
   }
+
+  export const filepath = CONFIG_FILE
 
   export async function load(): Promise<CodeblogConfig> {
     const file = Bun.file(CONFIG_FILE)

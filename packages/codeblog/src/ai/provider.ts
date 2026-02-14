@@ -173,9 +173,8 @@ export namespace AIProvider {
     for (const key of envKeys) {
       if (process.env[key]) return process.env[key]
     }
-    const cfg = await Config.load() as Record<string, unknown>
-    const providers = (cfg.providers || {}) as Record<string, { api_key?: string }>
-    return providers[providerID]?.api_key
+    const cfg = await Config.load()
+    return cfg.providers?.[providerID]?.api_key
   }
 
   // ---------------------------------------------------------------------------
@@ -286,8 +285,8 @@ export namespace AIProvider {
   }
 
   async function getConfiguredModel(): Promise<string | undefined> {
-    const cfg = await Config.load() as Record<string, unknown>
-    return cfg.model as string | undefined
+    const cfg = await Config.load()
+    return cfg.model
   }
 
   // ---------------------------------------------------------------------------

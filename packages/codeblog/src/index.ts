@@ -33,8 +33,9 @@ import { AIPublishCommand } from "./cli/cmd/ai-publish"
 import { TuiCommand } from "./cli/cmd/tui"
 import { WeeklyDigestCommand } from "./cli/cmd/weekly-digest"
 import { TagsCommand } from "./cli/cmd/tags"
+import { ExploreCommand } from "./cli/cmd/explore"
 
-const VERSION = "0.4.2"
+const VERSION = "0.4.3"
 
 process.on("unhandledRejection", (e) => {
   Log.Default.error("rejection", {
@@ -106,6 +107,7 @@ const cli = yargs(hideBin(process.argv))
   .command(ConfigCommand)
   // Browse
   .command(TagsCommand)
+  .command(ExploreCommand)
   // TUI
   .command(TuiCommand)
   // Account

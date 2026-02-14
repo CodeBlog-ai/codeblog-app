@@ -5,11 +5,11 @@ import { UI } from "../ui"
 
 export const ConfigCommand: CommandModule = {
   command: "config",
-  describe: "Configure AI provider and model settings",
+  describe: "Configure AI provider, model, and server settings",
   builder: (yargs) =>
     yargs
       .option("provider", {
-        describe: "AI provider: anthropic, openai, google",
+        describe: "AI provider: anthropic, openai, google, xai, mistral, groq, etc.",
         type: "string",
       })
       .option("api-key", {
@@ -17,16 +17,32 @@ export const ConfigCommand: CommandModule = {
         type: "string",
       })
       .option("model", {
-        describe: "Default model ID",
+        alias: "m",
+        describe: "Set default AI model (e.g. claude-sonnet-4-20250514, gpt-4o)",
+        type: "string",
+      })
+      .option("url", {
+        describe: "Set CodeBlog server URL",
         type: "string",
       })
       .option("list", {
+        alias: "l",
         describe: "List available models and their status",
+        type: "boolean",
+        default: false,
+      })
+      .option("path", {
+        describe: "Show config file path",
         type: "boolean",
         default: false,
       }),
   handler: async (args) => {
     try {
+      if (args.path) {
+        console.log(Config.filepath)
+        return
+      }
+
       if (args.list) {
         const models = await AIProvider.available()
         const providers = await AIProvider.listProviders()
@@ -36,11 +52,10 @@ export const ConfigCommand: CommandModule = {
         console.log("")
 
         const configured = Object.entries(providers).filter(([, p]) => p.hasKey)
-        const unconfigured = Object.entries(providers).filter(([, p]) => !p.hasKey)
 
         if (configured.length > 0) {
           console.log(`  ${UI.Style.TEXT_SUCCESS}Configured:${UI.Style.TEXT_NORMAL}`)
-          for (const [id, p] of configured) {
+          for (const [, p] of configured) {
             console.log(`    ${UI.Style.TEXT_SUCCESS}✓${UI.Style.TEXT_NORMAL} ${UI.Style.TEXT_NORMAL_BOLD}${p.name}${UI.Style.TEXT_NORMAL} ${UI.Style.TEXT_DIM}(${p.models.length} models)${UI.Style.TEXT_NORMAL}`)
           }
           console.log("")
@@ -62,37 +77,49 @@ export const ConfigCommand: CommandModule = {
       }
 
       if (args.provider && args.apiKey) {
-        const provider = args.provider as string
-        const cfg = await Config.load() as Record<string, unknown>
-        const providers = (cfg.providers || {}) as Record<string, Record<string, string>>
-        providers[provider] = { ...providers[provider], api_key: args.apiKey as string }
-        await Config.save({ ...cfg, providers } as unknown as Config.CodeblogConfig)
-        UI.success(`${provider} API key saved`)
+        const cfg = await Config.load()
+        const providers = cfg.providers || {}
+        providers[args.provider as string] = { ...providers[args.provider as string], api_key: args.apiKey as string }
+        await Config.save({ providers })
+        UI.success(`${args.provider} API key saved`)
         return
       }
 
       if (args.model) {
-        const model = args.model as string
-        const cfg = await Config.load() as Record<string, unknown>
-        await Config.save({ ...cfg, model } as unknown as Config.CodeblogConfig)
-        UI.success(`Default model set to ${model}`)
+        await Config.save({ model: args.model as string })
+        UI.success(`Default model set to ${args.model}`)
+        return
+      }
+
+      if (args.url) {
+        await Config.save({ api_url: args.url as string })
+        UI.success(`Server URL set to ${args.url}`)
         return
       }
 
       // Show current config
-      const cfg = await Config.load() as Record<string, unknown>
-      const model = (cfg.model as string) || AIProvider.DEFAULT_MODEL
-      const providers = (cfg.providers || {}) as Record<string, Record<string, string>>
+      const cfg = await Config.load()
+      const model = cfg.model || AIProvider.DEFAULT_MODEL
+      const providers = cfg.providers || {}
 
       console.log("")
       console.log(`  ${UI.Style.TEXT_NORMAL_BOLD}Current Config${UI.Style.TEXT_NORMAL}`)
+      console.log(`  ${UI.Style.TEXT_DIM}${Config.filepath}${UI.Style.TEXT_NORMAL}`)
       console.log("")
       console.log(`  Model:     ${UI.Style.TEXT_HIGHLIGHT}${model}${UI.Style.TEXT_NORMAL}`)
       console.log(`  API URL:   ${cfg.api_url || "https://codeblog.ai"}`)
       console.log("")
-      for (const [id, p] of Object.entries(providers)) {
-        const masked = p.api_key ? p.api_key.slice(0, 8) + "..." : "not set"
-        console.log(`  ${id}: ${UI.Style.TEXT_DIM}${masked}${UI.Style.TEXT_NORMAL}`)
+
+      if (Object.keys(providers).length > 0) {
+        console.log(`  ${UI.Style.TEXT_NORMAL_BOLD}AI Providers${UI.Style.TEXT_NORMAL}`)
+        for (const [id, p] of Object.entries(providers)) {
+          const masked = p.api_key ? p.api_key.slice(0, 8) + "..." : "not set"
+          console.log(`    ${UI.Style.TEXT_SUCCESS}✓${UI.Style.TEXT_NORMAL} ${id}: ${UI.Style.TEXT_DIM}${masked}${UI.Style.TEXT_NORMAL}`)
+        }
+      } else {
+        console.log(`  ${UI.Style.TEXT_DIM}No AI providers configured.${UI.Style.TEXT_NORMAL}`)
+        console.log(`  ${UI.Style.TEXT_DIM}Set one: codeblog config --provider anthropic --api-key sk-...${UI.Style.TEXT_NORMAL}`)
+        console.log(`  ${UI.Style.TEXT_DIM}Or use env: ANTHROPIC_API_KEY=sk-...${UI.Style.TEXT_NORMAL}`)
       }
       console.log("")
     } catch (err) {
