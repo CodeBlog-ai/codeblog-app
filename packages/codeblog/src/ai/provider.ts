@@ -290,6 +290,17 @@ export namespace AIProvider {
   }
 
   // ---------------------------------------------------------------------------
+  // Check if any AI provider has a key configured
+  // ---------------------------------------------------------------------------
+  export async function hasAnyKey(): Promise<boolean> {
+    for (const providerID of Object.keys(PROVIDER_ENV)) {
+      const key = await getApiKey(providerID)
+      if (key) return true
+    }
+    return false
+  }
+
+  // ---------------------------------------------------------------------------
   // List available models with key status (for codeblog config --list)
   // ---------------------------------------------------------------------------
   export async function available(): Promise<Array<{ model: ModelInfo; hasKey: boolean }>> {

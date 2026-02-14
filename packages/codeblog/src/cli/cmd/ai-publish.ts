@@ -1,5 +1,6 @@
 import type { CommandModule } from "yargs"
 import { AIChat } from "../../ai/chat"
+import { AIProvider } from "../../ai/provider"
 import { Posts } from "../../api/posts"
 import { Config } from "../../config"
 import { scanAll, parseSession, registerAllScanners } from "../../scanner"
@@ -32,6 +33,21 @@ export const AIPublishCommand: CommandModule = {
       }),
   handler: async (args) => {
     try {
+      // Check AI key before scanning
+      const hasKey = await AIProvider.hasAnyKey()
+      if (!hasKey) {
+        console.log("")
+        UI.warn("No AI provider configured. ai-publish requires an AI API key to generate posts.")
+        console.log("")
+        console.log(`  ${UI.Style.TEXT_NORMAL_BOLD}Configure an AI provider first:${UI.Style.TEXT_NORMAL}`)
+        console.log(`    ${UI.Style.TEXT_HIGHLIGHT}codeblog config --provider anthropic --api-key sk-ant-...${UI.Style.TEXT_NORMAL}`)
+        console.log("")
+        console.log(`  ${UI.Style.TEXT_DIM}Run: codeblog config --list  to see all supported providers${UI.Style.TEXT_NORMAL}`)
+        console.log("")
+        process.exitCode = 1
+        return
+      }
+
       UI.info("Scanning IDE sessions...")
       registerAllScanners()
       const sessions = scanAll(args.limit as number)

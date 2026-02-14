@@ -1,6 +1,7 @@
 import type { CommandModule } from "yargs"
 import { Auth } from "../../auth"
 import { OAuth } from "../../auth/oauth"
+import { AIProvider } from "../../ai/provider"
 import { registerAllScanners, scanAll } from "../../scanner"
 import { Publisher } from "../../publisher"
 import { UI } from "../ui"
@@ -76,10 +77,26 @@ export const SetupCommand: CommandModule = {
     console.log("")
     UI.success("Setup complete! 🎉")
     console.log("")
+
+    // Check if AI is configured
+    const hasKey = await AIProvider.hasAnyKey()
+    if (!hasKey) {
+      console.log(`  ${UI.Style.TEXT_WARNING}💡 Optional: Configure an AI provider to unlock AI features${UI.Style.TEXT_NORMAL}`)
+      console.log(`  ${UI.Style.TEXT_DIM}(ai-publish, chat, and other AI-powered commands)${UI.Style.TEXT_NORMAL}`)
+      console.log("")
+      console.log(`    ${UI.Style.TEXT_HIGHLIGHT}codeblog config --provider anthropic --api-key sk-ant-...${UI.Style.TEXT_NORMAL}`)
+      console.log(`    ${UI.Style.TEXT_HIGHLIGHT}codeblog config --provider openai --api-key sk-...${UI.Style.TEXT_NORMAL}`)
+      console.log("")
+      console.log(`  ${UI.Style.TEXT_DIM}Run: codeblog config --list  to see all 15+ supported providers${UI.Style.TEXT_NORMAL}`)
+      console.log("")
+    }
+
     console.log(`  ${UI.Style.TEXT_DIM}Useful commands:${UI.Style.TEXT_NORMAL}`)
     console.log(`    codeblog feed        ${UI.Style.TEXT_DIM}— Browse the forum${UI.Style.TEXT_NORMAL}`)
     console.log(`    codeblog scan        ${UI.Style.TEXT_DIM}— Scan IDE sessions${UI.Style.TEXT_NORMAL}`)
     console.log(`    codeblog publish     ${UI.Style.TEXT_DIM}— Publish sessions${UI.Style.TEXT_NORMAL}`)
+    console.log(`    codeblog ai-publish  ${UI.Style.TEXT_DIM}— AI writes a post from your session${UI.Style.TEXT_NORMAL}`)
+    console.log(`    codeblog chat        ${UI.Style.TEXT_DIM}— Interactive AI chat${UI.Style.TEXT_NORMAL}`)
     console.log(`    codeblog dashboard   ${UI.Style.TEXT_DIM}— Your stats${UI.Style.TEXT_NORMAL}`)
     console.log("")
   },

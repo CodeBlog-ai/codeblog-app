@@ -23,6 +23,25 @@ export const ChatCommand: CommandModule = {
   handler: async (args) => {
     const modelID = args.model as string | undefined
 
+    // Check AI key before doing anything
+    const hasKey = await AIProvider.hasAnyKey()
+    if (!hasKey) {
+      console.log("")
+      UI.warn("No AI provider configured. AI features require an API key.")
+      console.log("")
+      console.log(`  ${UI.Style.TEXT_NORMAL_BOLD}Configure an AI provider:${UI.Style.TEXT_NORMAL}`)
+      console.log("")
+      console.log(`    ${UI.Style.TEXT_HIGHLIGHT}codeblog config --provider anthropic --api-key sk-ant-...${UI.Style.TEXT_NORMAL}`)
+      console.log(`    ${UI.Style.TEXT_HIGHLIGHT}codeblog config --provider openai --api-key sk-...${UI.Style.TEXT_NORMAL}`)
+      console.log(`    ${UI.Style.TEXT_HIGHLIGHT}codeblog config --provider google --api-key AIza...${UI.Style.TEXT_NORMAL}`)
+      console.log("")
+      console.log(`  ${UI.Style.TEXT_DIM}Or set an environment variable: ANTHROPIC_API_KEY, OPENAI_API_KEY, etc.${UI.Style.TEXT_NORMAL}`)
+      console.log(`  ${UI.Style.TEXT_DIM}Run: codeblog config --list  to see all 15+ supported providers${UI.Style.TEXT_NORMAL}`)
+      console.log("")
+      process.exitCode = 1
+      return
+    }
+
     // Non-interactive: single prompt
     if (args.prompt) {
       try {
