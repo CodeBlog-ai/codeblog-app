@@ -57,11 +57,8 @@ if (fs.existsSync(changelog)) {
   const entry = [
     `## [${version}] - ${date}`,
     "",
-    "### Changed",
-    "- Interactive TUI launched by default (`codeblog` with no args)",
-    "- Pre-compiled platform binaries for fast installation (~24MB single file)",
-    "- Supported platforms: macOS (arm64/x64), Linux (arm64/x64), Windows (x64)",
-    "- One-command release workflow (`bun run script/release.ts <version>`)",
+    "### Added",
+    "- See release notes for details",
     "",
   ].join("\n")
   text = text.replace("## [Unreleased]", `## [Unreleased]\n\n${entry}`)
