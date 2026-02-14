@@ -12,7 +12,14 @@ export function Chat() {
   const [messages, setMessages] = createSignal<Message[]>([])
   const [streaming, setStreaming] = createSignal(false)
   const [streamText, setStreamText] = createSignal("")
-  const [model, setModel] = createSignal("claude-sonnet-4-20250514")
+  const [model, setModel] = createSignal("")
+
+  // Load configured model on mount
+  import("../../config").then(({ Config }) =>
+    Config.load().then((cfg) => {
+      if (cfg.model) setModel(cfg.model)
+    }).catch(() => {}),
+  )
   const [inputBuf, setInputBuf] = createSignal("")
   const [inputMode, setInputMode] = createSignal(true)
 

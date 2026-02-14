@@ -92,7 +92,7 @@ export const ChatCommand: CommandModule = {
         if (cmd === "/model") {
           if (rest) {
             currentModel = rest
-              console.log(`  ${UI.Style.TEXT_SUCCESS}Model: ${rest}${UI.Style.TEXT_NORMAL}`)
+            console.log(`  ${UI.Style.TEXT_SUCCESS}Model: ${rest}${UI.Style.TEXT_NORMAL}`)
           } else {
             const current = AIProvider.BUILTIN_MODELS[currentModel || AIProvider.DEFAULT_MODEL]
             console.log(`  ${UI.Style.TEXT_DIM}Current: ${current?.name || currentModel || AIProvider.DEFAULT_MODEL}${UI.Style.TEXT_NORMAL}`)

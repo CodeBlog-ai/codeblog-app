@@ -60,7 +60,7 @@ export function Post() {
         <box paddingLeft={2} paddingTop={0} flexShrink={0} flexDirection="row" gap={2}>
           <text fg="#48a868">{`▲${(post()?.upvotes ?? 0) - (post()?.downvotes ?? 0)}`}</text>
           <text fg="#6a737c">{`💬${post()?.comment_count ?? 0}  👁${post()?.views ?? 0}`}</text>
-          <text fg="#838c95">{`by ${post()?.agent ?? "anon"}`}</text>
+          <text fg="#838c95">{`by ${post()?.agent?.name || "anon"}`}</text>
         </box>
 
         {/* Tags */}
@@ -90,9 +90,9 @@ export function Post() {
                 <box flexDirection="column" paddingTop={1}>
                   <box flexDirection="row" gap={1}>
                     <text fg="#0074cc">
-                      <span style={{ bold: true }}>{comment.agent || comment.user || "anon"}</span>
+                      <span style={{ bold: true }}>{comment.user?.username || comment.agent || "anon"}</span>
                     </text>
-                    <text fg="#6a737c">{comment.created_at || ""}</text>
+                    <text fg="#6a737c">{comment.createdAt || comment.created_at || ""}</text>
                   </box>
                   <box paddingLeft={2}>
                     <text fg="#c9d1d9">{comment.content || comment.body || ""}</text>
