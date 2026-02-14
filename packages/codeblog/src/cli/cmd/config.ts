@@ -29,8 +29,24 @@ export const ConfigCommand: CommandModule = {
     try {
       if (args.list) {
         const models = await AIProvider.available()
+        const providers = await AIProvider.listProviders()
+
         console.log("")
-        console.log(`  ${UI.Style.TEXT_NORMAL_BOLD}Available Models${UI.Style.TEXT_NORMAL}`)
+        console.log(`  ${UI.Style.TEXT_NORMAL_BOLD}Providers${UI.Style.TEXT_NORMAL} ${UI.Style.TEXT_DIM}(${Object.keys(providers).length} from models.dev)${UI.Style.TEXT_NORMAL}`)
+        console.log("")
+
+        const configured = Object.entries(providers).filter(([, p]) => p.hasKey)
+        const unconfigured = Object.entries(providers).filter(([, p]) => !p.hasKey)
+
+        if (configured.length > 0) {
+          console.log(`  ${UI.Style.TEXT_SUCCESS}Configured:${UI.Style.TEXT_NORMAL}`)
+          for (const [id, p] of configured) {
+            console.log(`    ${UI.Style.TEXT_SUCCESS}✓${UI.Style.TEXT_NORMAL} ${UI.Style.TEXT_NORMAL_BOLD}${p.name}${UI.Style.TEXT_NORMAL} ${UI.Style.TEXT_DIM}(${p.models.length} models)${UI.Style.TEXT_NORMAL}`)
+          }
+          console.log("")
+        }
+
+        console.log(`  ${UI.Style.TEXT_NORMAL_BOLD}Built-in Models${UI.Style.TEXT_NORMAL}`)
         console.log("")
         for (const { model, hasKey } of models) {
           const status = hasKey ? `${UI.Style.TEXT_SUCCESS}✓${UI.Style.TEXT_NORMAL}` : `${UI.Style.TEXT_DIM}✗${UI.Style.TEXT_NORMAL}`
@@ -40,17 +56,13 @@ export const ConfigCommand: CommandModule = {
         console.log("")
         console.log(`  ${UI.Style.TEXT_DIM}✓ = API key configured, ✗ = needs key${UI.Style.TEXT_NORMAL}`)
         console.log(`  ${UI.Style.TEXT_DIM}Set key: codeblog config --provider anthropic --api-key sk-...${UI.Style.TEXT_NORMAL}`)
+        console.log(`  ${UI.Style.TEXT_DIM}Any model from models.dev can be used with provider/model format${UI.Style.TEXT_NORMAL}`)
         console.log("")
         return
       }
 
       if (args.provider && args.apiKey) {
         const provider = args.provider as string
-        if (!["anthropic", "openai", "google"].includes(provider)) {
-          UI.error("Provider must be: anthropic, openai, or google")
-          process.exitCode = 1
-          return
-        }
         const cfg = await Config.load() as Record<string, unknown>
         const providers = (cfg.providers || {}) as Record<string, Record<string, string>>
         providers[provider] = { ...providers[provider], api_key: args.apiKey as string }
@@ -61,11 +73,6 @@ export const ConfigCommand: CommandModule = {
 
       if (args.model) {
         const model = args.model as string
-        if (!AIProvider.MODELS[model]) {
-          UI.error(`Unknown model: ${model}. Run: codeblog config --list`)
-          process.exitCode = 1
-          return
-        }
         const cfg = await Config.load() as Record<string, unknown>
         await Config.save({ ...cfg, model } as unknown as Config.CodeblogConfig)
         UI.success(`Default model set to ${model}`)

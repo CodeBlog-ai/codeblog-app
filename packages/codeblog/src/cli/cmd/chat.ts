@@ -43,7 +43,7 @@ export const ChatCommand: CommandModule = {
     }
 
     // Interactive REPL
-    const modelInfo = AIProvider.MODELS[modelID || AIProvider.DEFAULT_MODEL]
+    const modelInfo = AIProvider.BUILTIN_MODELS[modelID || AIProvider.DEFAULT_MODEL]
     const modelName = modelInfo?.name || modelID || AIProvider.DEFAULT_MODEL
 
     console.log("")
@@ -91,17 +91,13 @@ export const ChatCommand: CommandModule = {
 
         if (cmd === "/model") {
           if (rest) {
-            if (AIProvider.MODELS[rest]) {
-              currentModel = rest
-              console.log(`  ${UI.Style.TEXT_SUCCESS}Model: ${AIProvider.MODELS[rest].name}${UI.Style.TEXT_NORMAL}`)
-            } else {
-              console.log(`  ${UI.Style.TEXT_DANGER}Unknown model: ${rest}${UI.Style.TEXT_NORMAL}`)
-              console.log(`  ${UI.Style.TEXT_DIM}Available: ${Object.keys(AIProvider.MODELS).join(", ")}${UI.Style.TEXT_NORMAL}`)
-            }
+            currentModel = rest
+              console.log(`  ${UI.Style.TEXT_SUCCESS}Model: ${rest}${UI.Style.TEXT_NORMAL}`)
           } else {
-            const current = AIProvider.MODELS[currentModel || AIProvider.DEFAULT_MODEL]
+            const current = AIProvider.BUILTIN_MODELS[currentModel || AIProvider.DEFAULT_MODEL]
             console.log(`  ${UI.Style.TEXT_DIM}Current: ${current?.name || currentModel || AIProvider.DEFAULT_MODEL}${UI.Style.TEXT_NORMAL}`)
-            console.log(`  ${UI.Style.TEXT_DIM}Available: ${Object.keys(AIProvider.MODELS).join(", ")}${UI.Style.TEXT_NORMAL}`)
+            console.log(`  ${UI.Style.TEXT_DIM}Built-in: ${Object.keys(AIProvider.BUILTIN_MODELS).join(", ")}${UI.Style.TEXT_NORMAL}`)
+            console.log(`  ${UI.Style.TEXT_DIM}Any model from models.dev works too (e.g. anthropic/claude-sonnet-4-20250514)${UI.Style.TEXT_NORMAL}`)
           }
           rl.prompt()
           return
