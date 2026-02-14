@@ -1,6 +1,5 @@
 import type { CommandModule } from "yargs"
-import { scanAll, parseSession, registerAllScanners } from "../../scanner"
-import { analyzeSession } from "../../scanner/analyzer"
+import { scanAll, parseSession, registerAllScanners, analyzeSession } from "../../scanner"
 import { Posts } from "../../api/posts"
 import { UI } from "../ui"
 
