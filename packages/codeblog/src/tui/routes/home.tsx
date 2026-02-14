@@ -36,6 +36,7 @@ export function Home(props: {
   const [streaming, setStreaming] = createSignal(false)
   const [streamText, setStreamText] = createSignal("")
   let abortCtrl: AbortController | undefined
+  let escCooldown = 0
   const chatting = createMemo(() => messages().length > 0 || streaming())
 
   // Shimmer animation for thinking state (like Claude Code)
@@ -78,6 +79,7 @@ export function Home(props: {
       showMsg("Paste your API URL (or press Enter to skip):", theme.colors.primary)
     },
     setMode: theme.setMode,
+    send,
     colors: theme.colors,
   })
 

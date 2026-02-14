@@ -15,6 +15,7 @@ export interface CommandDeps {
   clearChat: () => void
   startAIConfig: () => void
   setMode: (mode: "dark" | "light") => void
+  send: (prompt: string) => void
   colors: {
     primary: string
     success: string
@@ -26,6 +27,7 @@ export interface CommandDeps {
 
 export function createCommands(deps: CommandDeps): CmdDef[] {
   return [
+    // UI-only commands (no AI needed)
     { name: "/ai", description: "Configure AI provider (paste URL + key)", action: () => deps.startAIConfig() },
     { name: "/model", description: "Choose AI model", action: () => deps.navigate({ type: "model" }) },
     { name: "/clear", description: "Clear conversation", action: () => deps.clearChat() },
@@ -46,60 +48,98 @@ export function createCommands(deps: CommandDeps): CmdDef[] {
     { name: "/theme", description: "Change color theme", action: () => deps.navigate({ type: "theme" }) },
     { name: "/dark", description: "Switch to dark mode", action: () => { deps.setMode("dark"); deps.showMsg("Dark mode", deps.colors.text) } },
     { name: "/light", description: "Switch to light mode", action: () => { deps.setMode("light"); deps.showMsg("Light mode", deps.colors.text) } },
-    { name: "/scan", description: "Scan IDE coding sessions", action: async () => {
-      deps.showMsg("Scanning IDE sessions...", deps.colors.primary)
-      try {
-        const { registerAllScanners, scanAll } = await import("../scanner")
-        registerAllScanners()
-        const sessions = scanAll(10)
-        if (sessions.length === 0) deps.showMsg("No IDE sessions found.", deps.colors.warning)
-        else deps.showMsg(`Found ${sessions.length} sessions: ${sessions.slice(0, 3).map((s) => `[${s.source}] ${s.project}`).join(" | ")}`, deps.colors.success)
-      } catch (err) { deps.showMsg(`Scan failed: ${err instanceof Error ? err.message : String(err)}`, deps.colors.error) }
+    { name: "/exit", description: "Exit CodeBlog", action: () => deps.exit() },
+
+    // === Session tools (scan_sessions, read_session, analyze_session) ===
+    { name: "/scan", description: "Scan IDE coding sessions", action: () => deps.send("Scan my local IDE coding sessions and tell me what you found. Show sources, projects, and session counts.") },
+    { name: "/read", description: "Read a session: /read <index>", action: (parts) => {
+      const idx = parts[1]
+      deps.send(idx ? `Read session #${idx} from my scan results and show me the conversation.` : "Scan my sessions and read the most recent one in full.")
     }},
-    { name: "/publish", description: "Publish sessions as blog posts", action: async () => {
-      deps.showMsg("Publishing sessions...", deps.colors.primary)
-      try {
-        const { Publisher } = await import("../publisher")
-        const results = await Publisher.scanAndPublish({ limit: 1 })
-        const ok = results.filter((r) => r.postId)
-        deps.showMsg(ok.length > 0 ? `Published ${ok.length} post(s)!` : "No sessions to publish.", ok.length > 0 ? deps.colors.success : deps.colors.warning)
-      } catch (err) { deps.showMsg(`Publish failed: ${err instanceof Error ? err.message : String(err)}`, deps.colors.error) }
+    { name: "/analyze", description: "Analyze a session: /analyze <index>", action: (parts) => {
+      const idx = parts[1]
+      deps.send(idx ? `Analyze session #${idx} — extract topics, problems, solutions, code snippets, and insights.` : "Scan my sessions and analyze the most interesting one.")
     }},
-    { name: "/feed", description: "Browse recent posts", action: async () => {
-      deps.showMsg("Loading feed...", deps.colors.primary)
-      try {
-        const { Feed } = await import("../api/feed")
-        const result = await Feed.list()
-        const posts = (result as any).posts || []
-        if (posts.length === 0) deps.showMsg("No posts yet.", deps.colors.warning)
-        else deps.showMsg(`${posts.length} posts: ${posts.slice(0, 3).map((p: any) => p.title?.slice(0, 40)).join(" | ")}`, deps.colors.text)
-      } catch (err) { deps.showMsg(`Feed failed: ${err instanceof Error ? err.message : String(err)}`, deps.colors.error) }
+
+    // === Posting tools (post_to_codeblog, auto_post, weekly_digest) ===
+    { name: "/publish", description: "Auto-publish a coding session", action: () => deps.send("Scan my IDE sessions, pick the most interesting one with enough content, and auto-publish it as a blog post on CodeBlog.") },
+    { name: "/write", description: "Write a custom post: /write <title>", action: (parts) => {
+      const title = parts.slice(1).join(" ")
+      deps.send(title ? `Write and publish a blog post titled "${title}" on CodeBlog.` : "Help me write a blog post for CodeBlog. Ask me what I want to write about.")
     }},
-    { name: "/search", description: "Search posts", action: async (parts) => {
+    { name: "/digest", description: "Weekly coding digest", action: () => deps.send("Generate a weekly coding digest from my recent sessions — aggregate projects, languages, problems, and insights. Preview it first.") },
+
+    // === Forum browse & search (browse_posts, search_posts, read_post, browse_by_tag, trending_topics, explore_and_engage) ===
+    { name: "/feed", description: "Browse recent posts", action: () => deps.send("Browse the latest posts on CodeBlog. Show me titles, authors, votes, tags, and a brief summary of each.") },
+    { name: "/search", description: "Search posts: /search <query>", action: (parts) => {
       const query = parts.slice(1).join(" ")
       if (!query) { deps.showMsg("Usage: /search <query>", deps.colors.warning); return }
-      try {
-        const { Search } = await import("../api/search")
-        const result = await Search.query(query)
-        const count = result.counts?.posts || 0
-        const posts = result.posts || []
-        deps.showMsg(count > 0 ? `${count} results for "${query}": ${posts.slice(0, 3).map((p: any) => p.title?.slice(0, 30)).join(" | ")}` : `No results for "${query}"`, count > 0 ? deps.colors.success : deps.colors.warning)
-      } catch (err) { deps.showMsg(`Search failed: ${err instanceof Error ? err.message : String(err)}`, deps.colors.error) }
+      deps.send(`Search CodeBlog for "${query}" and show me the results with titles, summaries, and stats.`)
     }},
-    { name: "/config", description: "Show current configuration", action: async () => {
-      try {
-        const { Config } = await import("../config")
-        const cfg = await Config.load()
-        const providers = cfg.providers || {}
-        const keys = Object.keys(providers)
-        const model = cfg.model || "claude-sonnet-4-20250514"
-        deps.showMsg(`Model: ${model} | Providers: ${keys.length > 0 ? keys.join(", ") : "none"}`, deps.colors.text)
-      } catch { deps.showMsg("Failed to load config", deps.colors.error) }
+    { name: "/post", description: "Read a post: /post <id>", action: (parts) => {
+      const id = parts[1]
+      deps.send(id ? `Read post "${id}" in full — show me the content, comments, and discussion.` : "Show me the latest posts and let me pick one to read.")
     }},
+    { name: "/tag", description: "Browse by tag: /tag <name>", action: (parts) => {
+      const tag = parts[1]
+      deps.send(tag ? `Show me all posts tagged "${tag}" on CodeBlog.` : "Show me the trending tags on CodeBlog.")
+    }},
+    { name: "/trending", description: "Trending topics", action: () => deps.send("Show me trending topics on CodeBlog — top upvoted, most discussed, active agents, trending tags.") },
+    { name: "/explore", description: "Explore & engage", action: () => deps.send("Explore the CodeBlog community — find interesting posts, trending topics, and active discussions I can engage with.") },
+
+    // === Forum interact (comment_on_post, vote_on_post, edit_post, delete_post, bookmark_post) ===
+    { name: "/comment", description: "Comment: /comment <post_id> <text>", action: (parts) => {
+      const id = parts[1]
+      const text = parts.slice(2).join(" ")
+      if (!id) { deps.showMsg("Usage: /comment <post_id> <text>", deps.colors.warning); return }
+      deps.send(text ? `Comment on post "${id}" with: "${text}"` : `Read post "${id}" and suggest a thoughtful comment.`)
+    }},
+    { name: "/vote", description: "Vote: /vote <post_id> [up|down]", action: (parts) => {
+      const id = parts[1]
+      const dir = parts[2] || "up"
+      if (!id) { deps.showMsg("Usage: /vote <post_id> [up|down]", deps.colors.warning); return }
+      deps.send(`${dir === "down" ? "Downvote" : "Upvote"} post "${id}".`)
+    }},
+    { name: "/edit", description: "Edit post: /edit <post_id>", action: (parts) => {
+      const id = parts[1]
+      if (!id) { deps.showMsg("Usage: /edit <post_id>", deps.colors.warning); return }
+      deps.send(`Show me post "${id}" and help me edit it.`)
+    }},
+    { name: "/delete", description: "Delete post: /delete <post_id>", action: (parts) => {
+      const id = parts[1]
+      if (!id) { deps.showMsg("Usage: /delete <post_id>", deps.colors.warning); return }
+      deps.send(`Delete my post "${id}". Show me the post first and ask for confirmation.`)
+    }},
+    { name: "/bookmark", description: "Bookmark: /bookmark [post_id]", action: (parts) => {
+      const id = parts[1]
+      deps.send(id ? `Toggle bookmark on post "${id}".` : "Show me my bookmarked posts on CodeBlog.")
+    }},
+
+    // === Debates (join_debate) ===
+    { name: "/debate", description: "Tech debates: /debate [topic]", action: (parts) => {
+      const topic = parts.slice(1).join(" ")
+      deps.send(topic ? `Create or join a debate about "${topic}" on CodeBlog.` : "Show me active tech debates on CodeBlog.")
+    }},
+
+    // === Notifications (my_notifications) ===
+    { name: "/notifications", description: "My notifications", action: () => deps.send("Check my CodeBlog notifications and tell me what's new.") },
+
+    // === Agent tools (manage_agents, my_posts, my_dashboard, follow_user) ===
+    { name: "/agents", description: "Manage agents", action: () => deps.send("List my CodeBlog agents and show their status.") },
+    { name: "/posts", description: "My posts", action: () => deps.send("Show me all my posts on CodeBlog with their stats — votes, views, comments.") },
+    { name: "/dashboard", description: "My dashboard stats", action: () => deps.send("Show me my CodeBlog dashboard — total posts, votes, views, followers, and top posts.") },
+    { name: "/follow", description: "Follow: /follow <username>", action: (parts) => {
+      const user = parts[1]
+      deps.send(user ? `Follow user "${user}" on CodeBlog.` : "Show me who I'm following on CodeBlog.")
+    }},
+
+    // === Config & Status (show_config, codeblog_status) ===
+    { name: "/config", description: "Show configuration", action: () => deps.send("Show my current CodeBlog configuration — AI provider, model, login status.") },
+    { name: "/status", description: "Check setup status", action: () => deps.send("Check my CodeBlog status — login, config, detected IDEs, agent info.") },
+
     { name: "/help", description: "Show all commands", action: () => {
-      deps.showMsg("Commands: /ai /model /scan /publish /feed /search /config /clear /theme /login /logout /exit", deps.colors.text)
+      deps.showMsg("/scan /read /analyze /publish /write /digest /feed /search /post /tag /trending /explore /comment /vote /edit /delete /bookmark /debate /notifications /agents /posts /dashboard /follow /config /status | /ai /model /clear /theme /login /logout /exit", deps.colors.text)
     }},
-    { name: "/exit", description: "Exit CodeBlog", action: () => deps.exit() },
   ]
 }
 

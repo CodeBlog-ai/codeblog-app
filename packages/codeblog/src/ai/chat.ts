@@ -39,61 +39,91 @@ export namespace AIChat {
     const model = await AIProvider.getModel(modelID)
     log.info("streaming", { model: modelID || AIProvider.DEFAULT_MODEL, messages: messages.length })
 
-    const coreMessages: CoreMessage[] = messages.map((m) => ({
-      role: m.role,
-      content: m.content,
-    }))
-
-    const result = streamText({
-      model,
-      system: SYSTEM_PROMPT,
-      messages: coreMessages,
-      tools: chatTools,
-      maxSteps: 5,
-      abortSignal: signal,
-    })
-
+    const history: CoreMessage[] = messages.map((m) => ({ role: m.role, content: m.content }))
     let full = ""
-    try {
-      for await (const part of result.fullStream) {
-        switch (part.type) {
-          case "text-delta": {
-            // AI SDK v6 uses .text, older versions use .textDelta
-            const delta = (part as any).text ?? (part as any).textDelta ?? ""
-            if (delta) {
-              full += delta
-              callbacks.onToken?.(delta)
+
+    // Manual multi-step loop (maxSteps=1 per call, we handle tool follow-up ourselves)
+    // This is needed because openai-compatible providers don't support automatic multi-step
+    for (let step = 0; step < 5; step++) {
+      if (signal?.aborted) break
+
+      const result = streamText({
+        model,
+        system: SYSTEM_PROMPT,
+        messages: history,
+        tools: chatTools,
+        maxSteps: 1,
+        abortSignal: signal,
+      })
+
+      const calls: Array<{ id: string; name: string; input: unknown; output: unknown }> = []
+
+      try {
+        for await (const part of result.fullStream) {
+          if (signal?.aborted) break
+          switch (part.type) {
+            case "text-delta": {
+              const delta = (part as any).text ?? (part as any).textDelta ?? ""
+              if (delta) { full += delta; callbacks.onToken?.(delta) }
+              break
             }
-            break
-          }
-          case "tool-call":
-            callbacks.onToolCall?.(part.toolName, part.args)
-            break
-          case "tool-result":
-            callbacks.onToolResult?.((part as any).toolName, (part as any).result ?? {})
-            break
-          case "error": {
-            const msg = part.error instanceof Error ? part.error.message : String(part.error)
-            log.error("stream part error", { error: msg })
-            callbacks.onError?.(part.error instanceof Error ? part.error : new Error(msg))
-            break
+            case "tool-call": {
+              const input = (part as any).input ?? (part as any).args
+              callbacks.onToolCall?.(part.toolName, input)
+              calls.push({ id: part.toolCallId, name: part.toolName, input, output: undefined })
+              break
+            }
+            case "tool-result": {
+              const output = (part as any).output ?? (part as any).result ?? {}
+              const name = (part as any).toolName
+              callbacks.onToolResult?.(name, output)
+              const match = calls.find((c) => c.name === name && c.output === undefined)
+              if (match) match.output = output
+              break
+            }
+            case "error": {
+              const msg = part.error instanceof Error ? part.error.message : String(part.error)
+              log.error("stream part error", { error: msg })
+              callbacks.onError?.(part.error instanceof Error ? part.error : new Error(msg))
+              break
+            }
           }
         }
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err))
+        log.error("stream error", { error: error.message })
+        if (callbacks.onError) callbacks.onError(error)
+        else throw error
+        return full
       }
-      // If fullStream text-delta didn't capture text, try result.text as fallback
-      if (!full.trim()) {
-        try { full = await result.text } catch {}
-      }
-      callbacks.onFinish?.(full || "(No response)")
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err))
-      log.error("stream error", { error: error.message })
-      if (callbacks.onError) {
-        callbacks.onError(error)
-      } else {
-        throw error
-      }
+
+      // No tool calls this step → done
+      if (calls.length === 0) break
+
+      // Append assistant + tool messages in AI SDK v6 format for next round
+      history.push({
+        role: "assistant",
+        content: calls.map((c) => ({
+          type: "tool-call" as const,
+          toolCallId: c.id,
+          toolName: c.name,
+          input: c.input ?? {},
+        })),
+      } as any)
+      history.push({
+        role: "tool",
+        content: calls.map((c) => ({
+          type: "tool-result" as const,
+          toolCallId: c.id,
+          toolName: c.name,
+          output: { type: "json", value: c.output ?? {} },
+        })),
+      } as any)
+
+      log.info("tool round done, sending follow-up", { step, tools: calls.map((c) => c.name) })
     }
+
+    callbacks.onFinish?.(full || "(No response)")
     return full
   }
 
