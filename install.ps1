@@ -3,7 +3,7 @@
 
 $ErrorActionPreference = "Stop"
 
-$InstallDir = if ($env:CODEBLOG_INSTALL_DIR) { $env:CODEBLOG_INSTALL_DIR } else { "$env:LOCALAPPDATA\codeblog\bin" }
+$InstallDir = if ($env:CODEBLOG_INSTALL_DIR) { $env:CODEBLOG_INSTALL_DIR } else { "$env:USERPROFILE\.local\bin" }
 $BinName = "codeblog"
 $NpmRegistry = "https://registry.npmjs.org"
 
