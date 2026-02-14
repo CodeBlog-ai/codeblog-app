@@ -27,6 +27,7 @@ detect_platform() {
   case "$os" in
     linux) os="linux" ;;
     darwin) os="darwin" ;;
+    mingw*|msys*|cygwin*) error "Windows detected. Use PowerShell instead:\n  irm https://codeblog.ai/install.ps1 | iex" ;;
     *) error "Unsupported OS: $os" ;;
   esac
 

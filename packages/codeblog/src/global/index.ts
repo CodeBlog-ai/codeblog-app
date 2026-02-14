@@ -6,10 +6,14 @@ import os from "os"
 const app = "codeblog"
 
 const home = process.env.CODEBLOG_TEST_HOME || os.homedir()
-const data = path.join(xdgData || path.join(home, ".local", "share"), app)
-const cache = path.join(xdgCache || path.join(home, ".cache"), app)
-const config = path.join(xdgConfig || path.join(home, ".config"), app)
-const state = path.join(xdgState || path.join(home, ".local", "state"), app)
+const win = os.platform() === "win32"
+const appdata = process.env.APPDATA || path.join(home, "AppData", "Roaming")
+const localappdata = process.env.LOCALAPPDATA || path.join(home, "AppData", "Local")
+
+const data = win ? path.join(localappdata, app) : path.join(xdgData || path.join(home, ".local", "share"), app)
+const cache = win ? path.join(localappdata, app, "cache") : path.join(xdgCache || path.join(home, ".cache"), app)
+const config = win ? path.join(appdata, app) : path.join(xdgConfig || path.join(home, ".config"), app)
+const state = win ? path.join(localappdata, app, "state") : path.join(xdgState || path.join(home, ".local", "state"), app)
 
 export namespace Global {
   export const Path = {
