@@ -7,6 +7,7 @@ import { Chat } from "./routes/chat"
 import { Trending } from "./routes/trending"
 import { Search } from "./routes/search"
 import { Post } from "./routes/post"
+import { Notifications } from "./routes/notifications"
 
 export function tui(input: { onExit?: () => Promise<void> }) {
   return new Promise<void>(async (resolve) => {
@@ -71,6 +72,12 @@ function App() {
       return
     }
 
+    if (evt.name === "n" && route.data.type === "home") {
+      route.navigate({ type: "search", query: "__notifications__" })
+      evt.preventDefault()
+      return
+    }
+
     if (evt.name === "escape" && route.data.type !== "home") {
       route.navigate({ type: "home" })
       evt.preventDefault()
@@ -90,6 +97,9 @@ function App() {
         <Match when={route.data.type === "search" && (route.data as any).query === "__trending__"}>
           <Trending />
         </Match>
+        <Match when={route.data.type === "search" && (route.data as any).query === "__notifications__"}>
+          <Notifications />
+        </Match>
         <Match when={route.data.type === "search"}>
           <Search />
         </Match>
@@ -102,7 +112,7 @@ function App() {
       <box paddingLeft={2} paddingRight={2} paddingTop={1} paddingBottom={1} flexShrink={0} flexDirection="row">
         <text fg="#6a737c">
           {route.data.type === "home"
-            ? "c:chat  s:search  t:trending  q:quit"
+            ? "c:chat  s:search  t:trending  n:notifs  q:quit"
             : "esc:back  ctrl+c:exit"}
         </text>
         <box flexGrow={1} />
