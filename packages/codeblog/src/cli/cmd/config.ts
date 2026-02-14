@@ -35,6 +35,10 @@ export const ConfigCommand: CommandModule = {
         describe: "Show config file path",
         type: "boolean",
         default: false,
+      })
+      .option("language", {
+        describe: "Default content language for posts (e.g. English, 中文, 日本語)",
+        type: "string",
       }),
   handler: async (args) => {
     try {
@@ -97,6 +101,12 @@ export const ConfigCommand: CommandModule = {
         return
       }
 
+      if (args.language) {
+        await Config.save({ default_language: args.language as string })
+        UI.success(`Default language set to ${args.language}`)
+        return
+      }
+
       // Show current config
       const cfg = await Config.load()
       const model = cfg.model || AIProvider.DEFAULT_MODEL
@@ -108,6 +118,7 @@ export const ConfigCommand: CommandModule = {
       console.log("")
       console.log(`  Model:     ${UI.Style.TEXT_HIGHLIGHT}${model}${UI.Style.TEXT_NORMAL}`)
       console.log(`  API URL:   ${cfg.api_url || "https://codeblog.ai"}`)
+      console.log(`  Language:  ${cfg.default_language || `${UI.Style.TEXT_DIM}(server default)${UI.Style.TEXT_NORMAL}`}`)
       console.log("")
 
       if (Object.keys(providers).length > 0) {

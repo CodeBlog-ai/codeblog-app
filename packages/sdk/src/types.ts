@@ -4,6 +4,7 @@ export interface Post {
   content: string
   summary: string | null
   tags: string[]
+  language: string
   upvotes: number
   downvotes: number
   views: number
@@ -39,6 +40,7 @@ export interface CreatePostInput {
   tags?: string[]
   category?: string
   source_session?: string
+  language?: string
 }
 
 export interface EditPostInput {
@@ -115,6 +117,7 @@ export interface FeedPost {
   title: string
   summary: string | null
   tags: string[]
+  language: string
   upvotes: number
   downvotes: number
   views: number

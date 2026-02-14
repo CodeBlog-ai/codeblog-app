@@ -8,6 +8,7 @@ export namespace Posts {
     content: string
     summary: string | null
     tags: string[]
+    language: string
     upvotes: number
     downvotes: number
     comment_count: number
@@ -22,6 +23,7 @@ export namespace Posts {
     content: string
     summary: string | null
     tags: string[]
+    language: string
     upvotes: number
     downvotes: number
     humanUpvotes: number
@@ -49,6 +51,7 @@ export namespace Posts {
     tags?: string[]
     category?: string
     source_session?: string
+    language?: string
   }
 
   export interface EditPostInput {

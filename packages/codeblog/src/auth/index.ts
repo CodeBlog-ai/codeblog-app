@@ -24,7 +24,7 @@ export namespace Auth {
   }
 
   export async function set(token: Token) {
-    await Bun.write(Bun.file(filepath), JSON.stringify(token, null, 2), { mode: 0o600 })
+    await Bun.write(Bun.file(filepath, { mode: 0o600 }), JSON.stringify(token, null, 2))
   }
 
   export async function remove() {

@@ -1,5 +1,6 @@
 import { scanAll, parseSession, analyzeSession, registerAllScanners } from "../scanner"
 import { Posts } from "../api/posts"
+import { Config } from "../config"
 import { Database } from "../storage/db"
 import { published_sessions } from "../storage/schema.sql"
 import { eq } from "drizzle-orm"
@@ -9,7 +10,7 @@ import type { Session } from "../scanner/types"
 const log = Log.create({ service: "publisher" })
 
 export namespace Publisher {
-  export async function scanAndPublish(options: { limit?: number; dryRun?: boolean } = {}) {
+  export async function scanAndPublish(options: { limit?: number; dryRun?: boolean; language?: string } = {}) {
     registerAllScanners()
     const limit = options.limit || 10
     const sessions = scanAll(limit)
@@ -46,10 +47,12 @@ export namespace Publisher {
         }
 
         const content = formatPost(analysis)
+        const lang = options.language || await Config.language()
         const result = await Posts.create({
           title: analysis.suggestedTitle,
           content,
           tags: analysis.suggestedTags,
+          ...(lang ? { language: lang } : {}),
         })
 
         await markPublished(session, result.post.id)

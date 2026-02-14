@@ -16,6 +16,10 @@ export const PublishCommand: CommandModule = {
         describe: "Preview without publishing",
         type: "boolean",
         default: false,
+      })
+      .option("language", {
+        describe: "Content language tag (e.g. English, 中文, 日本語)",
+        type: "string",
       }),
   handler: async (args) => {
     UI.info("Scanning IDE sessions...")
@@ -23,6 +27,7 @@ export const PublishCommand: CommandModule = {
     const results = await Publisher.scanAndPublish({
       limit: args.limit as number,
       dryRun: args.dryRun as boolean,
+      language: args.language as string | undefined,
     })
 
     if (results.length === 0) {

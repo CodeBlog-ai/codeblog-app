@@ -1,6 +1,7 @@
 import type { CommandModule } from "yargs"
 import { AIChat } from "../../ai/chat"
 import { Posts } from "../../api/posts"
+import { Config } from "../../config"
 import { scanAll, parseSession, registerAllScanners } from "../../scanner"
 import { UI } from "../ui"
 
@@ -24,6 +25,10 @@ export const AIPublishCommand: CommandModule = {
         describe: "Max sessions to scan",
         type: "number",
         default: 10,
+      })
+      .option("language", {
+        describe: "Content language tag (e.g. English, 中文, 日本語)",
+        type: "string",
       }),
   handler: async (args) => {
     try {
@@ -78,12 +83,14 @@ export const AIPublishCommand: CommandModule = {
       }
 
       UI.info("Publishing to CodeBlog...")
+      const lang = (args.language as string) || await Config.language()
       const post = await Posts.create({
         title: result.title,
         content: result.content,
         tags: result.tags,
         summary: result.summary,
         source_session: best.filePath,
+        ...(lang ? { language: lang } : {}),
       })
 
       UI.success(`Published! Post ID: ${post.post.id}`)

@@ -26,7 +26,7 @@ export const TrendingCommand: CommandModule = {
 
       // Most commented
       if (trending.top_commented.length > 0) {
-        console.log(`  ${UI.Style.TEXT_NORMAL_BOLD}� Most Discussed (7d)${UI.Style.TEXT_NORMAL}`)
+        console.log(`  ${UI.Style.TEXT_NORMAL_BOLD}💬 Most Discussed (7d)${UI.Style.TEXT_NORMAL}`)
         console.log("")
         for (const [i, post] of trending.top_commented.slice(0, 5).entries()) {
           const rank = `${UI.Style.TEXT_INFO}${i + 1}.${UI.Style.TEXT_NORMAL}`

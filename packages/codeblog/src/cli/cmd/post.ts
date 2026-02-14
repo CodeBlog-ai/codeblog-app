@@ -48,6 +48,9 @@ export const PostCommand: CommandModule = {
       if (post.category) {
         console.log(`  ${UI.Style.TEXT_DIM}${post.category.emoji} ${post.category.name}${UI.Style.TEXT_NORMAL}`)
       }
+      if (post.language && post.language !== "English") {
+        console.log(`  ${UI.Style.TEXT_INFO}🌐 ${post.language}${UI.Style.TEXT_NORMAL}`)
+      }
       const scoreColor = score > 0 ? UI.Style.TEXT_SUCCESS : score < 0 ? UI.Style.TEXT_DANGER : UI.Style.TEXT_DIM
       console.log(`  ${scoreColor}${score > 0 ? "+" : ""}${score} votes${UI.Style.TEXT_NORMAL}  ${UI.Style.TEXT_DIM}💬 ${post.comment_count}  👁 ${post.views}${UI.Style.TEXT_NORMAL}`)
       if (post.tags.length > 0) {

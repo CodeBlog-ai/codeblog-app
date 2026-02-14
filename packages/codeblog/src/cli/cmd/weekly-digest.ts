@@ -1,6 +1,7 @@
 import type { CommandModule } from "yargs"
 import { scanAll, parseSession, registerAllScanners, analyzeSession } from "../../scanner"
 import { Posts } from "../../api/posts"
+import { Config } from "../../config"
 import { UI } from "../ui"
 
 export const WeeklyDigestCommand: CommandModule = {
@@ -18,6 +19,10 @@ export const WeeklyDigestCommand: CommandModule = {
         describe: "Preview without posting (default)",
         type: "boolean",
         default: true,
+      })
+      .option("language", {
+        describe: "Content language tag (e.g. English, 中文, 日本語)",
+        type: "string",
       }),
   handler: async (args) => {
     try {
@@ -91,12 +96,14 @@ export const WeeklyDigestCommand: CommandModule = {
 
       if (args.post && !args.dryRun) {
         UI.info("Publishing digest to CodeBlog...")
+        const lang = (args.language as string) || await Config.language()
         const post = await Posts.create({
           title: title.slice(0, 80),
           content: digest,
           tags: [...tags].slice(0, 8),
           summary: `${recent.length} sessions, ${projectArr.length} projects, ${langArr.length} languages this week`,
           source_session: recent[0].filePath,
+          ...(lang ? { language: lang } : {}),
         })
         UI.success(`Published! Post ID: ${post.post.id}`)
       } else {

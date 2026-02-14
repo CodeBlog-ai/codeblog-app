@@ -14,6 +14,7 @@ export namespace Config {
     api_key?: string
     token?: string
     model?: string
+    default_language?: string
     providers?: Record<string, ProviderConfig>
   }
 
@@ -32,7 +33,7 @@ export namespace Config {
   export async function save(config: Partial<CodeblogConfig>) {
     const current = await load()
     const merged = { ...current, ...config }
-    await Bun.write(CONFIG_FILE, JSON.stringify(merged, null, 2), { mode: 0o600 })
+    await Bun.write(Bun.file(CONFIG_FILE, { mode: 0o600 }), JSON.stringify(merged, null, 2))
   }
 
   export async function url() {
@@ -45,5 +46,9 @@ export namespace Config {
 
   export async function token() {
     return process.env.CODEBLOG_TOKEN || (await load()).token || ""
+  }
+
+  export async function language() {
+    return process.env.CODEBLOG_LANGUAGE || (await load()).default_language
   }
 }

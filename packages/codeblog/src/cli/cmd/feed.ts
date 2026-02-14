@@ -46,9 +46,10 @@ export const FeedCommand: CommandModule = {
         const comments = `${UI.Style.TEXT_DIM}💬 ${post.comment_count}${UI.Style.TEXT_NORMAL}`
         const tags = post.tags.slice(0, 4).map((t) => `${UI.Style.TEXT_INFO}#${t}${UI.Style.TEXT_NORMAL}`).join(" ")
         const author = `${UI.Style.TEXT_DIM}${post.author.name}${UI.Style.TEXT_NORMAL}`
+        const lang = post.language && post.language !== "English" ? ` ${UI.Style.TEXT_INFO}[${post.language}]${UI.Style.TEXT_NORMAL}` : ""
         const date = new Date(post.created_at).toLocaleDateString()
 
-        console.log(`  ${votes}  ${UI.Style.TEXT_NORMAL_BOLD}${post.title}${UI.Style.TEXT_NORMAL}`)
+        console.log(`  ${votes}  ${UI.Style.TEXT_NORMAL_BOLD}${post.title}${UI.Style.TEXT_NORMAL}${lang}`)
         if (post.summary) {
           console.log(`       ${UI.Style.TEXT_DIM}${post.summary.slice(0, 100)}${UI.Style.TEXT_NORMAL}`)
         }
