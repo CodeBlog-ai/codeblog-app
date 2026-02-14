@@ -53,7 +53,7 @@ export namespace AIProvider {
   // Provider env key mapping
   // ---------------------------------------------------------------------------
   const PROVIDER_ENV: Record<string, string[]> = {
-    anthropic: ["ANTHROPIC_API_KEY"],
+    anthropic: ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"],
     openai: ["OPENAI_API_KEY"],
     google: ["GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY"],
     "amazon-bedrock": ["AWS_ACCESS_KEY_ID"],
@@ -68,6 +68,22 @@ export namespace AIProvider {
     perplexity: ["PERPLEXITY_API_KEY"],
     openrouter: ["OPENROUTER_API_KEY"],
     "openai-compatible": ["OPENAI_COMPATIBLE_API_KEY"],
+  }
+
+  // ---------------------------------------------------------------------------
+  // Provider base URL env mapping (for third-party API proxies)
+  // ---------------------------------------------------------------------------
+  const PROVIDER_BASE_URL_ENV: Record<string, string[]> = {
+    anthropic: ["ANTHROPIC_BASE_URL"],
+    openai: ["OPENAI_BASE_URL", "OPENAI_API_BASE"],
+    google: ["GOOGLE_API_BASE_URL"],
+    azure: ["AZURE_OPENAI_BASE_URL"],
+    xai: ["XAI_BASE_URL"],
+    mistral: ["MISTRAL_BASE_URL"],
+    groq: ["GROQ_BASE_URL"],
+    deepinfra: ["DEEPINFRA_BASE_URL"],
+    openrouter: ["OPENROUTER_BASE_URL"],
+    "openai-compatible": ["OPENAI_COMPATIBLE_BASE_URL"],
   }
 
   // ---------------------------------------------------------------------------
@@ -178,6 +194,18 @@ export namespace AIProvider {
   }
 
   // ---------------------------------------------------------------------------
+  // Get base URL for a provider (env var or config)
+  // ---------------------------------------------------------------------------
+  export async function getBaseUrl(providerID: string): Promise<string | undefined> {
+    const envKeys = PROVIDER_BASE_URL_ENV[providerID] || []
+    for (const key of envKeys) {
+      if (process.env[key]) return process.env[key]
+    }
+    const cfg = await Config.load()
+    return cfg.providers?.[providerID]?.base_url
+  }
+
+  // ---------------------------------------------------------------------------
   // List all available providers with their models
   // ---------------------------------------------------------------------------
   export async function listProviders(): Promise<Record<string, { name: string; models: string[]; hasKey: boolean }>> {
@@ -223,7 +251,8 @@ export namespace AIProvider {
     if (builtin) {
       const apiKey = await getApiKey(builtin.providerID)
       if (!apiKey) throw noKeyError(builtin.providerID)
-      return getLanguageModel(builtin.providerID, id, apiKey)
+      const base = await getBaseUrl(builtin.providerID)
+      return getLanguageModel(builtin.providerID, id, apiKey, undefined, base)
     }
 
     // Try models.dev
@@ -234,7 +263,8 @@ export namespace AIProvider {
         const apiKey = await getApiKey(providerID)
         if (!apiKey) throw noKeyError(providerID)
         const npm = p.models[id].provider?.npm || p.npm || "@ai-sdk/openai-compatible"
-        return getLanguageModel(providerID, id, apiKey, npm, p.api)
+        const base = await getBaseUrl(providerID)
+        return getLanguageModel(providerID, id, apiKey, npm, base || p.api)
       }
     }
 
@@ -244,7 +274,8 @@ export namespace AIProvider {
       const mid = rest.join("/")
       const apiKey = await getApiKey(providerID)
       if (!apiKey) throw noKeyError(providerID)
-      return getLanguageModel(providerID, mid, apiKey)
+      const base = await getBaseUrl(providerID)
+      return getLanguageModel(providerID, mid, apiKey, undefined, base)
     }
 
     throw new Error(`Unknown model: ${id}. Run: codeblog config --list`)
@@ -293,9 +324,17 @@ export namespace AIProvider {
   // Check if any AI provider has a key configured
   // ---------------------------------------------------------------------------
   export async function hasAnyKey(): Promise<boolean> {
+    // Check env vars
     for (const providerID of Object.keys(PROVIDER_ENV)) {
       const key = await getApiKey(providerID)
       if (key) return true
+    }
+    // Check config file (covers third-party providers not in PROVIDER_ENV)
+    const cfg = await Config.load()
+    if (cfg.providers) {
+      for (const p of Object.values(cfg.providers)) {
+        if (p.api_key) return true
+      }
     }
     return false
   }

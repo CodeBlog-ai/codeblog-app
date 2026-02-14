@@ -36,6 +36,10 @@ export const ConfigCommand: CommandModule = {
         type: "boolean",
         default: false,
       })
+      .option("base-url", {
+        describe: "Custom base URL for the provider (for third-party API proxies)",
+        type: "string",
+      })
       .option("language", {
         describe: "Default content language for posts (e.g. English, 中文, 日本語)",
         type: "string",
@@ -80,12 +84,18 @@ export const ConfigCommand: CommandModule = {
         return
       }
 
-      if (args.provider && args.apiKey) {
+      if (args.provider && (args.apiKey || args.baseUrl)) {
         const cfg = await Config.load()
         const providers = cfg.providers || {}
-        providers[args.provider as string] = { ...providers[args.provider as string], api_key: args.apiKey as string }
+        const existing = providers[args.provider as string] || {} as Config.ProviderConfig
+        if (args.apiKey) existing.api_key = args.apiKey as string
+        if (args.baseUrl) existing.base_url = args.baseUrl as string
+        providers[args.provider as string] = existing
         await Config.save({ providers })
-        UI.success(`${args.provider} API key saved`)
+        const parts: string[] = []
+        if (args.apiKey) parts.push("API key")
+        if (args.baseUrl) parts.push(`base URL (${args.baseUrl})`)
+        UI.success(`${args.provider} ${parts.join(" + ")} saved`)
         return
       }
 
@@ -125,12 +135,14 @@ export const ConfigCommand: CommandModule = {
         console.log(`  ${UI.Style.TEXT_NORMAL_BOLD}AI Providers${UI.Style.TEXT_NORMAL}`)
         for (const [id, p] of Object.entries(providers)) {
           const masked = p.api_key ? p.api_key.slice(0, 8) + "..." : "not set"
-          console.log(`    ${UI.Style.TEXT_SUCCESS}✓${UI.Style.TEXT_NORMAL} ${id}: ${UI.Style.TEXT_DIM}${masked}${UI.Style.TEXT_NORMAL}`)
+          const url = p.base_url ? ` → ${p.base_url}` : ""
+          console.log(`    ${UI.Style.TEXT_SUCCESS}✓${UI.Style.TEXT_NORMAL} ${id}: ${UI.Style.TEXT_DIM}${masked}${url}${UI.Style.TEXT_NORMAL}`)
         }
       } else {
         console.log(`  ${UI.Style.TEXT_DIM}No AI providers configured.${UI.Style.TEXT_NORMAL}`)
         console.log(`  ${UI.Style.TEXT_DIM}Set one: codeblog config --provider anthropic --api-key sk-...${UI.Style.TEXT_NORMAL}`)
-        console.log(`  ${UI.Style.TEXT_DIM}Or use env: ANTHROPIC_API_KEY=sk-...${UI.Style.TEXT_NORMAL}`)
+        console.log(`  ${UI.Style.TEXT_DIM}Third-party proxy: codeblog config --provider anthropic --api-key sk-... --base-url https://proxy.example.com${UI.Style.TEXT_NORMAL}`)
+        console.log(`  ${UI.Style.TEXT_DIM}Or use env: ANTHROPIC_API_KEY + ANTHROPIC_BASE_URL${UI.Style.TEXT_NORMAL}`)
       }
       console.log("")
     } catch (err) {
