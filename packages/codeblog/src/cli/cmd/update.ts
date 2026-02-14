@@ -67,6 +67,9 @@ export const UpdateCommand: CommandModule = {
     if (os !== "windows") {
       await fs.chmod(bin, 0o755)
     }
+    if (os === "darwin") {
+      Bun.spawn(["codesign", "--sign", "-", "--force", bin], { stdout: "ignore", stderr: "ignore" })
+    }
 
     await fs.rm(tmp, { recursive: true, force: true })
 
