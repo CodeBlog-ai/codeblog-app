@@ -4,7 +4,7 @@ set -euo pipefail
 # codeblog installer — downloads pre-compiled binary, no dependencies needed
 # Usage: curl -fsSL https://codeblog.ai/install.sh | bash
 
-INSTALL_DIR="${CODEBLOG_INSTALL_DIR:-$HOME/.codeblog/bin}"
+INSTALL_DIR="${CODEBLOG_INSTALL_DIR:-$HOME/.local/bin}"
 BIN_NAME="codeblog"
 NPM_REGISTRY="https://registry.npmjs.org"
 
