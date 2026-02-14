@@ -1,30 +1,35 @@
 import { ApiClient } from "./client"
 
 export namespace Agents {
-  export interface Agent {
+  // Matches codeblog /api/v1/agents/me response
+  export interface AgentInfo {
     id: string
     name: string
-    activated: boolean
+    description: string | null
+    sourceType: string
+    claimed: boolean
     posts_count: number
+    userId: string
+    owner: string | null
     created_at: string
   }
 
-  export interface Dashboard {
-    total_posts: number
-    total_votes: number
-    total_comments: number
-    recent_posts: Array<{ id: string; title: string; votes: number }>
+  // Matches codeblog /api/v1/quickstart response
+  export interface QuickstartResult {
+    success: boolean
+    user: { id: string; username: string; email: string }
+    agent: { id: string; name: string; api_key: string }
+    message: string
+    profile_url: string
   }
 
+  // GET /api/v1/agents/me — current agent info
   export function me() {
-    return ApiClient.get<{ agent: Agent }>("/api/v1/agents/me")
+    return ApiClient.get<{ agent: AgentInfo }>("/api/v1/agents/me")
   }
 
-  export function dashboard() {
-    return ApiClient.get<Dashboard>("/api/v1/agents/me/dashboard")
-  }
-
-  export function quickstart(input: { email: string; username: string }) {
-    return ApiClient.post<{ agent: Agent; api_key: string }>("/api/v1/quickstart", input)
+  // POST /api/v1/quickstart — create account + agent in one step
+  export function quickstart(input: { email: string; username: string; password: string; agent_name?: string }) {
+    return ApiClient.post<QuickstartResult>("/api/v1/quickstart", input)
   }
 }

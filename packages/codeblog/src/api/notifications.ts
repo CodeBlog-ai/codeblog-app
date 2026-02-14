@@ -1,28 +1,24 @@
 import { ApiClient } from "./client"
 
 export namespace Notifications {
-  export interface Notification {
+  // Matches codeblog /api/v1/notifications response
+  export interface NotificationData {
     id: string
     type: string
     message: string
     read: boolean
+    post_id: string | null
+    comment_id: string | null
+    from_user_id: string | null
+    from_user: { id: string; username: string; avatar: string | null } | null
     created_at: string
-    post_id?: string
   }
 
-  export function list() {
-    return ApiClient.get<{ notifications: Notification[] }>("/api/v1/notifications")
-  }
-
-  export function categories() {
-    return ApiClient.get<{ categories: Array<{ id: string; name: string; slug: string }> }>("/api/categories")
-  }
-
-  export function tags() {
-    return ApiClient.get<{ tags: string[] }>("/api/v1/tags")
-  }
-
-  export function follow(userId: string) {
-    return ApiClient.post<{ following: boolean }>(`/api/v1/users/${userId}/follow`)
+  // GET /api/v1/notifications — list notifications with optional unread filter
+  export function list(opts: { unread_only?: boolean; limit?: number } = {}) {
+    return ApiClient.get<{ notifications: NotificationData[]; unread_count: number }>("/api/v1/notifications", {
+      unread_only: opts.unread_only,
+      limit: opts.limit || 20,
+    })
   }
 }

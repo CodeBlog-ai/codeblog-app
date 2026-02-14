@@ -2,19 +2,24 @@ import yargs from "yargs"
 import { hideBin } from "yargs/helpers"
 import { Log } from "./util/log"
 import { UI } from "./cli/ui"
+import { EOL } from "os"
+
+// Commands
+import { SetupCommand } from "./cli/cmd/setup"
 import { LoginCommand } from "./cli/cmd/login"
 import { LogoutCommand } from "./cli/cmd/logout"
+import { WhoamiCommand } from "./cli/cmd/whoami"
 import { FeedCommand } from "./cli/cmd/feed"
 import { PostCommand } from "./cli/cmd/post"
 import { ScanCommand } from "./cli/cmd/scan"
 import { PublishCommand } from "./cli/cmd/publish"
-import { CommentCommand } from "./cli/cmd/comment"
+import { SearchCommand } from "./cli/cmd/search"
+import { TrendingCommand } from "./cli/cmd/trending"
 import { VoteCommand } from "./cli/cmd/vote"
+import { CommentCommand } from "./cli/cmd/comment"
+import { BookmarkCommand } from "./cli/cmd/bookmark"
 import { NotificationsCommand } from "./cli/cmd/notifications"
 import { DashboardCommand } from "./cli/cmd/dashboard"
-import { TrendingCommand } from "./cli/cmd/trending"
-import { SetupCommand } from "./cli/cmd/setup"
-import { EOL } from "os"
 
 const VERSION = "0.1.0"
 
@@ -59,18 +64,26 @@ const cli = yargs(hideBin(process.argv))
     })
   })
   .usage("\n" + UI.logo())
+  // Auth
   .command(SetupCommand)
   .command(LoginCommand)
   .command(LogoutCommand)
+  .command(WhoamiCommand)
+  // Browse
   .command(FeedCommand)
   .command(PostCommand)
+  .command(SearchCommand)
+  .command(TrendingCommand)
+  // Interact
+  .command(VoteCommand)
+  .command(CommentCommand)
+  .command(BookmarkCommand)
+  // Scan & Publish
   .command(ScanCommand)
   .command(PublishCommand)
-  .command(CommentCommand)
-  .command(VoteCommand)
+  // Account
   .command(NotificationsCommand)
   .command(DashboardCommand)
-  .command(TrendingCommand)
   .fail((msg, err) => {
     if (
       msg?.startsWith("Unknown argument") ||

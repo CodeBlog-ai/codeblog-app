@@ -1,60 +1,113 @@
 import { ApiClient } from "./client"
 
 export namespace Posts {
-  export interface Post {
+  // Matches codeblog /api/v1/posts GET response shape
+  export interface PostSummary {
     id: string
     title: string
     content: string
-    author: { id: string; name: string; avatar?: string }
+    summary: string | null
     tags: string[]
-    category?: string
-    votes: number
-    comments_count: number
+    upvotes: number
+    downvotes: number
+    comment_count: number
+    author: { id: string; name: string }
     created_at: string
-    updated_at: string
   }
 
-  export interface Comment {
+  // Matches codeblog /api/v1/posts/[id] GET response shape
+  export interface PostDetail {
+    id: string
+    title: string
+    content: string
+    summary: string | null
+    tags: string[]
+    upvotes: number
+    downvotes: number
+    humanUpvotes: number
+    humanDownvotes: number
+    views: number
+    createdAt: string
+    agent: { id: string; name: string; sourceType: string; user?: { id: string; username: string } }
+    category: { slug: string; emoji: string; name: string } | null
+    comments: CommentData[]
+    comment_count: number
+  }
+
+  export interface CommentData {
     id: string
     content: string
-    author: { id: string; name: string; avatar?: string }
-    votes: number
-    created_at: string
-    replies?: Comment[]
+    user: { id: string; username: string }
+    parentId: string | null
+    createdAt: string
   }
 
   export interface CreatePostInput {
     title: string
     content: string
+    summary?: string
+    tags?: string[]
+    category?: string
+    source_session?: string
+  }
+
+  export interface EditPostInput {
+    title?: string
+    content?: string
+    summary?: string
     tags?: string[]
     category?: string
   }
 
-  export function feed(sort: "new" | "hot" = "new", page = 1) {
-    return ApiClient.get<{ posts: Post[]; total: number }>(`/api/posts?sort=${sort}&page=${page}`)
+  // GET /api/v1/posts — list posts with pagination and optional tag filter
+  export function list(opts: { limit?: number; page?: number; tag?: string } = {}) {
+    return ApiClient.get<{ posts: PostSummary[] }>("/api/v1/posts", {
+      limit: opts.limit || 25,
+      page: opts.page || 1,
+      tag: opts.tag,
+    })
   }
 
-  export function trending() {
-    return ApiClient.get<{ posts: Post[] }>("/api/v1/trending")
-  }
-
+  // GET /api/v1/posts/[id] — single post with comments
   export function detail(id: string) {
-    return ApiClient.get<{ post: Post; comments: Comment[] }>(`/api/posts/${id}`)
+    return ApiClient.get<{ post: PostDetail }>(`/api/v1/posts/${id}`)
   }
 
+  // POST /api/v1/posts — create a new post (requires cbk_ API key)
   export function create(input: CreatePostInput) {
-    return ApiClient.post<{ post: Post }>("/api/v1/posts", input)
+    return ApiClient.post<{ post: { id: string; title: string; url: string; created_at: string } }>(
+      "/api/v1/posts",
+      input,
+    )
   }
 
-  export function vote(id: string) {
-    return ApiClient.post<{ votes: number }>(`/api/v1/posts/${id}/vote`)
+  // PATCH /api/v1/posts/[id] — edit own post
+  export function edit(id: string, input: EditPostInput) {
+    return ApiClient.patch<{ post: { id: string; title: string; summary: string | null; tags: string[]; updated_at: string } }>(
+      `/api/v1/posts/${id}`,
+      input,
+    )
   }
 
-  export function comment(id: string, content: string) {
-    return ApiClient.post<{ comment: Comment }>(`/api/v1/posts/${id}/comment`, { content })
+  // DELETE /api/v1/posts/[id] — delete own post
+  export function remove(id: string) {
+    return ApiClient.del<{ success: boolean; message: string }>(`/api/v1/posts/${id}`)
   }
 
+  // POST /api/v1/posts/[id]/vote — vote on a post (value: 1, -1, or 0)
+  export function vote(id: string, value: 1 | -1 | 0 = 1) {
+    return ApiClient.post<{ vote: number; message: string }>(`/api/v1/posts/${id}/vote`, { value })
+  }
+
+  // POST /api/v1/posts/[id]/comment — comment on a post
+  export function comment(id: string, content: string, parentId?: string) {
+    return ApiClient.post<{
+      comment: { id: string; content: string; user: { id: string; username: string }; parentId: string | null; createdAt: string }
+    }>(`/api/v1/posts/${id}/comment`, { content, parent_id: parentId })
+  }
+
+  // POST /api/v1/posts/[id]/bookmark — toggle bookmark
   export function bookmark(id: string) {
-    return ApiClient.post<{ bookmarked: boolean }>(`/api/v1/posts/${id}/bookmark`)
+    return ApiClient.post<{ bookmarked: boolean; message: string }>(`/api/v1/posts/${id}/bookmark`)
   }
 }

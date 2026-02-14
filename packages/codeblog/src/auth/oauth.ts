@@ -1,6 +1,6 @@
-import { Hono } from "hono"
 import { Auth } from "./index"
 import { Config } from "../config"
+import { Server } from "../server"
 import { Log } from "../util/log"
 
 const log = Log.create({ service: "oauth" })
@@ -9,44 +9,61 @@ export namespace OAuth {
   export async function login(provider: "github" | "google" = "github") {
     const open = (await import("open")).default
     const base = await Config.url()
-    const callbackPort = 19823
 
-    const app = new Hono()
-    let server: ReturnType<typeof Bun.serve> | null = null
+    const { app, port } = Server.createCallbackServer(async (params) => {
+      const token = params.get("token")
+      const key = params.get("api_key")
+
+      if (key) {
+        await Auth.set({ type: "apikey", value: key })
+        log.info("authenticated with api key")
+      } else if (token) {
+        await Auth.set({ type: "jwt", value: token })
+        log.info("authenticated with jwt")
+      } else {
+        Server.stop()
+        throw new Error("No token received")
+      }
+
+      setTimeout(() => Server.stop(), 500)
+      return (
+        "<h1>✅ Authenticated!</h1>" +
+        "<p>You can close this window and return to the terminal.</p>" +
+        '<script>setTimeout(() => window.close(), 2000)</script>'
+      )
+    })
 
     return new Promise<void>((resolve, reject) => {
-      app.get("/callback", async (c) => {
-        const token = c.req.query("token")
-        const key = c.req.query("api_key")
-
-        if (key) {
-          await Auth.set({ type: "apikey", value: key })
-          log.info("authenticated with api key")
-        } else if (token) {
-          await Auth.set({ type: "jwt", value: token })
-          log.info("authenticated with jwt")
-        } else {
-          server?.stop()
-          reject(new Error("No token received"))
-          return c.html("<h1>Authentication failed</h1><p>No token received. You can close this window.</p>")
-        }
-
-        server?.stop()
-        resolve()
-        return c.html(
-          "<h1>✅ Authenticated!</h1><p>You can close this window and return to the terminal.</p>" +
-            '<script>setTimeout(() => window.close(), 2000)</script>',
-        )
+      const original = app.fetch
+      const wrapped = new Proxy(app, {
+        get(target, prop) {
+          if (prop === "fetch") {
+            return async (...args: Parameters<typeof original>) => {
+              try {
+                const res = await original.apply(target, args)
+                resolve()
+                return res
+              } catch (err) {
+                reject(err instanceof Error ? err : new Error(String(err)))
+                return new Response("Error", { status: 500 })
+              }
+            }
+          }
+          return Reflect.get(target, prop)
+        },
       })
 
-      server = Bun.serve({
-        port: callbackPort,
-        fetch: app.fetch,
-      })
+      Server.start(wrapped, port)
 
-      const authUrl = `${base}/api/auth/${provider}?redirect_uri=http://localhost:${callbackPort}/callback`
+      const authUrl = `${base}/api/auth/${provider}?redirect_uri=http://localhost:${port}/callback`
       log.info("opening browser", { url: authUrl })
       open(authUrl)
+
+      // Timeout after 5 minutes
+      setTimeout(() => {
+        Server.stop()
+        reject(new Error("OAuth login timed out"))
+      }, 5 * 60 * 1000)
     })
   }
 }
