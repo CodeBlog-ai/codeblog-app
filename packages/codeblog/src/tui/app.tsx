@@ -5,7 +5,8 @@ import { ExitProvider, useExit } from "./context/exit"
 import { Home } from "./routes/home"
 import { Chat } from "./routes/chat"
 
-const VERSION = "1.3.0"
+import pkg from "../../package.json"
+const VERSION = pkg.version
 
 export function tui(input: { onExit?: () => Promise<void> }) {
   return new Promise<void>(async (resolve) => {
