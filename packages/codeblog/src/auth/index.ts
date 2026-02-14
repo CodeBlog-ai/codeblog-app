@@ -8,6 +8,7 @@ export namespace Auth {
       type: z.enum(["jwt", "apikey"]),
       value: z.string(),
       expires: z.number().optional(),
+      username: z.string().optional(),
     })
     .meta({ ref: "AuthToken" })
   export type Token = z.infer<typeof Token>

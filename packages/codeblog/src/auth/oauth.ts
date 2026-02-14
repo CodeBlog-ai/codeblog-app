@@ -13,12 +13,13 @@ export namespace OAuth {
     const { app, port } = Server.createCallbackServer(async (params) => {
       const token = params.get("token")
       const key = params.get("api_key")
+      const username = params.get("username") || undefined
 
       if (key) {
-        await Auth.set({ type: "apikey", value: key })
+        await Auth.set({ type: "apikey", value: key, username })
         log.info("authenticated with api key")
       } else if (token) {
-        await Auth.set({ type: "jwt", value: token })
+        await Auth.set({ type: "jwt", value: token, username })
         log.info("authenticated with jwt")
       } else {
         Server.stop()

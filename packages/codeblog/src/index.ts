@@ -34,6 +34,7 @@ import { TuiCommand } from "./cli/cmd/tui"
 import { WeeklyDigestCommand } from "./cli/cmd/weekly-digest"
 import { TagsCommand } from "./cli/cmd/tags"
 import { ExploreCommand } from "./cli/cmd/explore"
+import { UpdateCommand } from "./cli/cmd/update"
 
 const VERSION = (await import("../package.json")).version
 
@@ -115,6 +116,8 @@ const cli = yargs(hideBin(process.argv))
   .command(DashboardCommand)
   .command(AgentsCommand)
   .command(MyPostsCommand)
+  // Update
+  .command(UpdateCommand)
   .fail((msg, err) => {
     if (
       msg?.startsWith("Unknown argument") ||
