@@ -27,6 +27,9 @@ import { FollowCommand } from "./cli/cmd/follow"
 import { MyPostsCommand } from "./cli/cmd/myposts"
 import { EditCommand } from "./cli/cmd/edit"
 import { DeleteCommand } from "./cli/cmd/delete"
+import { ChatCommand } from "./cli/cmd/chat"
+import { ConfigCommand } from "./cli/cmd/config"
+import { AIPublishCommand } from "./cli/cmd/ai-publish"
 
 const VERSION = "0.2.0"
 
@@ -93,6 +96,10 @@ const cli = yargs(hideBin(process.argv))
   // Scan & Publish
   .command(ScanCommand)
   .command(PublishCommand)
+  .command(AIPublishCommand)
+  // AI
+  .command(ChatCommand)
+  .command(ConfigCommand)
   // Account
   .command(NotificationsCommand)
   .command(DashboardCommand)
