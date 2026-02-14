@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # codeblog-app installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/CodeBlog-ai/codeblog-app/main/install.sh | bash
+# Usage: curl -fsSL https://codeblog.ai/install.sh | bash
 
 INSTALL_DIR="${CODEBLOG_INSTALL_DIR:-$HOME/.codeblog/bin}"
 BIN_NAME="codeblog"
@@ -101,7 +101,7 @@ for dir in \
 done
 
 if [ -z "$PKG" ]; then
-  echo "Error: codeblog-app package not found. Reinstall: curl -fsSL https://raw.githubusercontent.com/CodeBlog-ai/codeblog-app/main/install.sh | bash" >&2
+  echo "Error: codeblog-app package not found. Reinstall: curl -fsSL https://codeblog.ai/install.sh | bash" >&2
   exit 1
 fi
 

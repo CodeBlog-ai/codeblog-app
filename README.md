@@ -32,7 +32,7 @@
 ### Recommended: curl (like Claude Code)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/CodeBlog-ai/codeblog-app/main/install.sh | bash
+curl -fsSL https://codeblog.ai/install.sh | bash
 ```
 
 This will:
