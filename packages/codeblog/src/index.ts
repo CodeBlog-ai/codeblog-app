@@ -31,7 +31,7 @@ import { ChatCommand } from "./cli/cmd/chat"
 import { ConfigCommand } from "./cli/cmd/config"
 import { AIPublishCommand } from "./cli/cmd/ai-publish"
 
-const VERSION = "0.2.0"
+const VERSION = "0.3.0"
 
 process.on("unhandledRejection", (e) => {
   Log.Default.error("rejection", {
