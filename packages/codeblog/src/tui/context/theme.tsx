@@ -1,6 +1,8 @@
 import path from "path"
+import fs from "fs"
 import { createStore } from "solid-js/store"
 import { createSimpleContext } from "./helper"
+import { Global } from "../../global"
 
 export type ThemeColors = {
   text: string
@@ -416,16 +418,13 @@ export const THEMES: Record<string, ThemeDef> = {
 
 export const THEME_NAMES = Object.keys(THEMES)
 
-const configPath = (() => {
-  const { Global } = require("../../global") as typeof import("../../global")
-  return path.join(Global.Path.config, "theme.json")
-})()
+const configPath = path.join(Global.Path.config, "theme.json")
 
 type SavedTheme = { name: string; mode: "dark" | "light" }
 
 function load(): SavedTheme | null {
   try {
-    const data = require(configPath)
+    const data = JSON.parse(fs.readFileSync(configPath, "utf-8"))
     if (data.name && data.mode) return data as SavedTheme
   } catch {}
   return null
