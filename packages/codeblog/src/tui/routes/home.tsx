@@ -2,6 +2,7 @@ import { createSignal, Show } from "solid-js"
 import { useKeyboard } from "@opentui/solid"
 import { useRoute } from "../context/route"
 import { useExit } from "../context/exit"
+import { useTheme, THEME_NAMES } from "../context/theme"
 
 const LOGO = [
   "  ██████╗ ██████╗ ██████╗ ███████╗██████╗ ██╗      ██████╗  ██████╗ ",
@@ -26,6 +27,8 @@ const HELP_TEXT = [
   "  /notifications      View notifications",
   "  /dashboard          Your stats",
   "  /models             List available AI models",
+  "  /theme [name]       Switch theme (codeblog, dracula, nord, tokyonight, monokai, github, solarized)",
+  "  /dark | /light       Toggle dark/light mode",
   "  /help               Show this help",
   "  /exit               Exit",
   "",
@@ -41,6 +44,7 @@ export function Home(props: {
 }) {
   const route = useRoute()
   const exit = useExit()
+  const theme = useTheme()
   const [input, setInput] = createSignal("")
   const [message, setMessage] = createSignal("")
   const [messageColor, setMessageColor] = createSignal("#6a737c")
@@ -72,15 +76,42 @@ export function Home(props: {
       }
 
       if (cmd === "/login") {
-        showMsg("Opening browser for login...", "#0074cc")
+        showMsg("Opening browser for login...", theme.colors.primary)
         await props.onLogin()
-        showMsg("Logged in!", "#48a868")
+        showMsg("Logged in!", theme.colors.success)
+        return
+      }
+
+      if (cmd === "/theme") {
+        const name = parts[1]
+        if (!name) {
+          showMsg(`Theme: ${theme.name} (${theme.mode}) | Available: ${THEME_NAMES.join(", ")}`, theme.colors.text)
+          return
+        }
+        if (THEME_NAMES.includes(name)) {
+          theme.set(name)
+          showMsg(`Theme set to ${name}`, theme.colors.success)
+        } else {
+          showMsg(`Unknown theme: ${name}. Available: ${THEME_NAMES.join(", ")}`, theme.colors.error)
+        }
+        return
+      }
+
+      if (cmd === "/dark") {
+        theme.setMode("dark")
+        showMsg("Switched to dark mode", theme.colors.success)
+        return
+      }
+
+      if (cmd === "/light") {
+        theme.setMode("light")
+        showMsg("Switched to light mode", theme.colors.success)
         return
       }
 
       if (cmd === "/config") {
         if (parts[1] === "ai") {
-          showMsg("Use CLI: codeblog config --provider anthropic --api-key sk-...", "#f48225")
+          showMsg("Use CLI: codeblog config --provider anthropic --api-key sk-...", theme.colors.warning)
           return
         }
         try {
@@ -89,73 +120,72 @@ export function Home(props: {
           const providers = cfg.providers || {}
           const keys = Object.keys(providers)
           const model = cfg.model || "claude-sonnet-4-20250514"
-          showMsg(`Model: ${model} | Providers: ${keys.length > 0 ? keys.join(", ") : "none"} | URL: ${cfg.api_url || "https://codeblog.ai"}`, "#e7e9eb")
+          showMsg(`Model: ${model} | Providers: ${keys.length > 0 ? keys.join(", ") : "none"} | URL: ${cfg.api_url || "https://codeblog.ai"}`, theme.colors.text)
         } catch {
-          showMsg("Failed to load config", "#d73a49")
+          showMsg("Failed to load config", theme.colors.error)
         }
         return
       }
 
       if (cmd === "/scan") {
-        showMsg("Scanning IDE sessions...", "#0074cc")
+        showMsg("Scanning IDE sessions...", theme.colors.primary)
         try {
           const { registerAllScanners, scanAll } = await import("../../scanner")
           registerAllScanners()
           const sessions = scanAll(10)
           if (sessions.length === 0) {
-            showMsg("No IDE sessions found.", "#f48225")
+            showMsg("No IDE sessions found.", theme.colors.warning)
           } else {
             const summary = sessions.slice(0, 3).map((s) => `[${s.source}] ${s.project}`).join(" | ")
-            showMsg(`Found ${sessions.length} sessions: ${summary}`, "#48a868")
+            showMsg(`Found ${sessions.length} sessions: ${summary}`, theme.colors.success)
           }
         } catch (err) {
-          showMsg(`Scan failed: ${err instanceof Error ? err.message : String(err)}`, "#d73a49")
+          showMsg(`Scan failed: ${err instanceof Error ? err.message : String(err)}`, theme.colors.error)
         }
         return
       }
 
       if (cmd === "/publish") {
-        showMsg("Publishing sessions...", "#0074cc")
+        showMsg("Publishing sessions...", theme.colors.primary)
         try {
           const { Publisher } = await import("../../publisher")
           const results = await Publisher.scanAndPublish({ limit: 1 })
           const ok = results.filter((r) => r.postId)
           if (ok.length > 0) {
-            showMsg(`Published ${ok.length} post(s)!`, "#48a868")
+            showMsg(`Published ${ok.length} post(s)!`, theme.colors.success)
           } else {
-            showMsg("No sessions to publish.", "#f48225")
+            showMsg("No sessions to publish.", theme.colors.warning)
           }
         } catch (err) {
-          showMsg(`Publish failed: ${err instanceof Error ? err.message : String(err)}`, "#d73a49")
+          showMsg(`Publish failed: ${err instanceof Error ? err.message : String(err)}`, theme.colors.error)
         }
         return
       }
 
       if (cmd === "/ai-publish") {
         if (!props.hasAI) {
-          showMsg("No AI configured. Use: /config ai", "#d73a49")
+          showMsg("No AI configured. Use: /config ai", theme.colors.error)
           return
         }
-        showMsg("AI is writing a post from your session...", "#0074cc")
-        // Delegate to CLI command for now
-        showMsg("Use CLI: codeblog ai-publish", "#f48225")
+        showMsg("AI is writing a post from your session...", theme.colors.primary)
+        showMsg("Use CLI: codeblog ai-publish", theme.colors.warning)
         return
       }
 
       if (cmd === "/feed") {
-        showMsg("Loading feed...", "#0074cc")
+        showMsg("Loading feed...", theme.colors.primary)
         try {
           const { Feed } = await import("../../api/feed")
           const result = await Feed.list()
           const posts = (result as any).posts || []
           if (posts.length === 0) {
-            showMsg("No posts yet.", "#f48225")
+            showMsg("No posts yet.", theme.colors.warning)
           } else {
             const summary = posts.slice(0, 3).map((p: any) => p.title?.slice(0, 40)).join(" | ")
-            showMsg(`${posts.length} posts: ${summary}`, "#e7e9eb")
+            showMsg(`${posts.length} posts: ${summary}`, theme.colors.text)
           }
         } catch (err) {
-          showMsg(`Feed failed: ${err instanceof Error ? err.message : String(err)}`, "#d73a49")
+          showMsg(`Feed failed: ${err instanceof Error ? err.message : String(err)}`, theme.colors.error)
         }
         return
       }
@@ -166,9 +196,9 @@ export function Home(props: {
           const models = await AIProvider.available()
           const configured = models.filter((m) => m.hasKey)
           const names = configured.map((m) => m.model.name).join(", ")
-          showMsg(configured.length > 0 ? `Available: ${names}` : "No models configured. Use: codeblog config --provider anthropic --api-key sk-...", configured.length > 0 ? "#48a868" : "#f48225")
+          showMsg(configured.length > 0 ? `Available: ${names}` : "No models configured. Use: codeblog config --provider anthropic --api-key sk-...", configured.length > 0 ? theme.colors.success : theme.colors.warning)
         } catch (err) {
-          showMsg(`Failed: ${err instanceof Error ? err.message : String(err)}`, "#d73a49")
+          showMsg(`Failed: ${err instanceof Error ? err.message : String(err)}`, theme.colors.error)
         }
         return
       }
@@ -176,32 +206,32 @@ export function Home(props: {
       if (cmd === "/search") {
         const query = parts.slice(1).join(" ")
         if (!query) {
-          showMsg("Usage: /search <query>", "#f48225")
+          showMsg("Usage: /search <query>", theme.colors.warning)
           return
         }
         try {
           const { Posts } = await import("../../api/posts")
           const result = await Posts.search(query)
           const posts = (result as any).posts || []
-          showMsg(posts.length > 0 ? `${posts.length} results for "${query}"` : `No results for "${query}"`, posts.length > 0 ? "#48a868" : "#f48225")
+          showMsg(posts.length > 0 ? `${posts.length} results for "${query}"` : `No results for "${query}"`, posts.length > 0 ? theme.colors.success : theme.colors.warning)
         } catch (err) {
-          showMsg(`Search failed: ${err instanceof Error ? err.message : String(err)}`, "#d73a49")
+          showMsg(`Search failed: ${err instanceof Error ? err.message : String(err)}`, theme.colors.error)
         }
         return
       }
 
       if (cmd === "/trending" || cmd === "/notifications" || cmd === "/dashboard") {
-        showMsg(`Use CLI: codeblog ${cmd.slice(1)}`, "#f48225")
+        showMsg(`Use CLI: codeblog ${cmd.slice(1)}`, theme.colors.warning)
         return
       }
 
-      showMsg(`Unknown command: ${cmd}. Type /help`, "#d73a49")
+      showMsg(`Unknown command: ${cmd}. Type /help`, theme.colors.error)
       return
     }
 
     // Regular text → start AI chat
     if (!props.hasAI) {
-      showMsg("No AI provider configured. Run: /config ai", "#d73a49")
+      showMsg("No AI provider configured. Run: /config ai", theme.colors.error)
       return
     }
 
@@ -242,28 +272,28 @@ export function Home(props: {
       {/* Logo */}
       <box flexShrink={0} flexDirection="column">
         {LOGO.map((line, i) => (
-          <text fg={i < 4 ? "#f48225" : "#0074cc"}>{line}</text>
+          <text fg={i < 4 ? theme.colors.logo1 : theme.colors.logo2}>{line}</text>
         ))}
       </box>
 
       <box height={1} flexShrink={0}>
-        <text fg="#6a737c">The AI-powered coding forum</text>
+        <text fg={theme.colors.textMuted}>The AI-powered coding forum</text>
       </box>
 
       {/* Status indicators */}
       <box height={2} flexShrink={0} flexDirection="column" paddingTop={1}>
         <box flexDirection="row" gap={2}>
           <Show when={!props.loggedIn}>
-            <text fg="#d73a49">○ Not logged in — type /login</text>
+            <text fg={theme.colors.error}>○ Not logged in — type /login</text>
           </Show>
           <Show when={props.loggedIn}>
-            <text fg="#48a868">● {props.username || "Logged in"}</text>
+            <text fg={theme.colors.success}>● {props.username || "Logged in"}</text>
           </Show>
           <Show when={!props.hasAI}>
-            <text fg="#d73a49">○ No AI — type /config ai</text>
+            <text fg={theme.colors.error}>○ No AI — type /config ai</text>
           </Show>
           <Show when={props.hasAI}>
-            <text fg="#48a868">● {props.aiProvider}</text>
+            <text fg={theme.colors.success}>● {props.aiProvider}</text>
           </Show>
         </box>
       </box>
@@ -271,11 +301,11 @@ export function Home(props: {
       {/* Input prompt */}
       <box width="100%" maxWidth={75} flexShrink={0} paddingTop={1}>
         <box flexDirection="row" width="100%">
-          <text fg="#0074cc">
+          <text fg={theme.colors.primary}>
             <span style={{ bold: true }}>{"❯ "}</span>
           </text>
-          <text fg="#e7e9eb">{input()}</text>
-          <text fg="#6a737c">{"█"}</text>
+          <text fg={theme.colors.input}>{input()}</text>
+          <text fg={theme.colors.cursor}>{"█"}</text>
         </box>
       </box>
 
@@ -290,7 +320,7 @@ export function Home(props: {
       <Show when={showHelp()}>
         <box width="100%" maxWidth={75} paddingTop={1} flexShrink={0} flexDirection="column">
           {HELP_TEXT.map((line) => (
-            <text fg={line.startsWith("  /") ? "#0074cc" : "#6a737c"}>{line}</text>
+            <text fg={line.startsWith("  /") ? theme.colors.primary : theme.colors.textMuted}>{line}</text>
           ))}
         </box>
       </Show>

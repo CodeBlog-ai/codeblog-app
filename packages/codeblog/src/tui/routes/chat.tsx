@@ -1,6 +1,7 @@
 import { createSignal, For, Show, onMount } from "solid-js"
 import { useKeyboard } from "@opentui/solid"
 import { useRoute } from "../context/route"
+import { useTheme } from "../context/theme"
 
 interface Message {
   role: "user" | "assistant"
@@ -9,6 +10,7 @@ interface Message {
 
 export function Chat() {
   const route = useRoute()
+  const theme = useTheme()
   const [messages, setMessages] = createSignal<Message[]>([])
   const [streaming, setStreaming] = createSignal(false)
   const [streamText, setStreamText] = createSignal("")
@@ -164,12 +166,12 @@ export function Chat() {
     <box flexDirection="column" flexGrow={1}>
       {/* Header */}
       <box paddingLeft={2} paddingRight={2} paddingTop={1} flexShrink={0} flexDirection="row" gap={1}>
-        <text fg="#0074cc">
+        <text fg={theme.colors.primary}>
           <span style={{ bold: true }}>AI Chat</span>
         </text>
-        <text fg="#6a737c">{modelName()}</text>
+        <text fg={theme.colors.textMuted}>{modelName()}</text>
         <box flexGrow={1} />
-        <text fg="#6a737c">esc:back · /help · /model · /clear</text>
+        <text fg={theme.colors.textMuted}>esc:back · /help · /model · /clear</text>
       </box>
 
       {/* Messages */}
@@ -177,31 +179,31 @@ export function Chat() {
         <For each={messages()}>
           {(msg) => (
             <box flexDirection="row" paddingBottom={1}>
-              <text fg={msg.role === "user" ? "#0074cc" : "#48a868"}>
+              <text fg={msg.role === "user" ? theme.colors.primary : theme.colors.success}>
                 <span style={{ bold: true }}>{msg.role === "user" ? "❯ " : "◆ "}</span>
               </text>
-              <text fg="#e7e9eb">{msg.content}</text>
+              <text fg={theme.colors.text}>{msg.content}</text>
             </box>
           )}
         </For>
 
         <Show when={streaming()}>
           <box flexDirection="row" paddingBottom={1}>
-            <text fg="#48a868">
+            <text fg={theme.colors.success}>
               <span style={{ bold: true }}>{"◆ "}</span>
             </text>
-            <text fg="#a0a0a0">{streamText() || "thinking..."}</text>
+            <text fg={theme.colors.textMuted}>{streamText() || "thinking..."}</text>
           </box>
         </Show>
       </box>
 
       {/* Input */}
       <box paddingLeft={2} paddingRight={2} paddingBottom={1} flexShrink={0} flexDirection="row">
-        <text fg="#0074cc">
+        <text fg={theme.colors.primary}>
           <span style={{ bold: true }}>{"❯ "}</span>
         </text>
-        <text fg="#e7e9eb">{inputBuf()}</text>
-        <text fg="#6a737c">{"█"}</text>
+        <text fg={theme.colors.input}>{inputBuf()}</text>
+        <text fg={theme.colors.cursor}>{"█"}</text>
       </box>
     </box>
   )

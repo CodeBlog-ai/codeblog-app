@@ -2,6 +2,7 @@ import { render, useKeyboard, useRenderer, useTerminalDimensions } from "@opentu
 import { Switch, Match, onMount, createSignal, Show } from "solid-js"
 import { RouteProvider, useRoute } from "./context/route"
 import { ExitProvider, useExit } from "./context/exit"
+import { ThemeProvider, useTheme } from "./context/theme"
 import { Home } from "./routes/home"
 import { Chat } from "./routes/chat"
 
@@ -13,9 +14,11 @@ export function tui(input: { onExit?: () => Promise<void> }) {
     render(
       () => (
         <ExitProvider onExit={async () => { await input.onExit?.(); resolve() }}>
-          <RouteProvider>
-            <App />
-          </RouteProvider>
+          <ThemeProvider>
+            <RouteProvider>
+              <App />
+            </RouteProvider>
+          </ThemeProvider>
         </ExitProvider>
       ),
       {
@@ -31,6 +34,7 @@ export function tui(input: { onExit?: () => Promise<void> }) {
 function App() {
   const route = useRoute()
   const exit = useExit()
+  const theme = useTheme()
   const dimensions = useTerminalDimensions()
   const renderer = useRenderer()
   const [loggedIn, setLoggedIn] = createSignal(false)
@@ -119,26 +123,26 @@ function App() {
 
       {/* Status bar */}
       <box paddingLeft={2} paddingRight={2} paddingTop={1} paddingBottom={1} flexShrink={0} flexDirection="row">
-        <text fg="#6a737c">
+        <text fg={theme.colors.textMuted}>
           {route.data.type === "home"
-            ? "type to chat · /help · q:quit"
+            ? "type to chat · /help · /theme · q:quit"
             : "esc:back · ctrl+c:exit"}
         </text>
         <box flexGrow={1} />
         <Show when={hasAI()}>
-          <text fg="#48a868">{"● "}</text>
-          <text fg="#6a737c">{aiProvider()}</text>
-          <text fg="#6a737c">{"  "}</text>
+          <text fg={theme.colors.success}>{"● "}</text>
+          <text fg={theme.colors.textMuted}>{aiProvider()}</text>
+          <text fg={theme.colors.textMuted}>{"  "}</text>
         </Show>
         <Show when={!hasAI()}>
-          <text fg="#d73a49">{"○ "}</text>
-          <text fg="#6a737c">{"no AI  "}</text>
+          <text fg={theme.colors.error}>{"○ "}</text>
+          <text fg={theme.colors.textMuted}>{"no AI  "}</text>
         </Show>
-        <text fg={loggedIn() ? "#48a868" : "#d73a49"}>
+        <text fg={loggedIn() ? theme.colors.success : theme.colors.error}>
           {loggedIn() ? "● " : "○ "}
         </text>
-        <text fg="#6a737c">{loggedIn() ? username() || "logged in" : "not logged in"}</text>
-        <text fg="#6a737c">{`  v${VERSION}`}</text>
+        <text fg={theme.colors.textMuted}>{loggedIn() ? username() || "logged in" : "not logged in"}</text>
+        <text fg={theme.colors.textMuted}>{`  v${VERSION}`}</text>
       </box>
     </box>
   )
