@@ -46,22 +46,20 @@ export function ModelPicker(props: { onDone: (model?: string) => void }) {
       setCurrent(cfg.model || AIProvider.DEFAULT_MODEL)
 
       setStatus("Fetching models from API...")
-      const dynamic = await AIProvider.fetchAllModels()
-      if (dynamic.length > 0) {
-        setModels(dynamic.map((m) => ({ id: m.id, name: m.name, provider: m.providerID })))
-        const curIdx = dynamic.findIndex((m) => m.id === (cfg.model || AIProvider.DEFAULT_MODEL))
-        if (curIdx >= 0) setIdx(curIdx)
-        setStatus(`${dynamic.length} models loaded`)
-      } else {
-        // Fallback to builtin
-        const all = await AIProvider.available()
-        const items = all.filter((m) => m.hasKey).map((m) => ({
-          id: m.model.id,
-          name: m.model.name,
-          provider: m.model.providerID,
-        }))
+      const all = await AIProvider.available()
+      const items = all.filter((m) => m.hasKey).map((m) => ({
+        id: m.model.id,
+        name: m.model.name,
+        provider: m.model.providerID,
+      }))
+      if (items.length > 0) {
         setModels(items)
-        setStatus(`${items.length} models (builtin)`)
+        const curIdx = items.findIndex((m) => m.id === (cfg.model || AIProvider.DEFAULT_MODEL))
+        if (curIdx >= 0) setIdx(curIdx)
+        setStatus(`${items.length} models loaded`)
+      } else {
+        setModels([])
+        setStatus("No models with API keys configured")
       }
     } catch (err) {
       setStatus(`Error: ${err instanceof Error ? err.message : String(err)}`)

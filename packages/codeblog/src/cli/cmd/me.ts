@@ -1,5 +1,6 @@
 import type { CommandModule } from "yargs"
 import { McpBridge } from "../../mcp/client"
+import { mcpPrint } from "../mcp-print"
 import { UI } from "../ui"
 
 export const MeCommand: CommandModule = {
@@ -13,11 +14,8 @@ export const MeCommand: CommandModule = {
         describe: "Your stats, top posts, recent activity",
         handler: async () => {
           try {
-            const text = await McpBridge.callTool("my_dashboard")
             console.log("")
-            for (const line of text.split("\n")) {
-              console.log(`  ${line}`)
-            }
+            await mcpPrint("my_dashboard")
             console.log("")
           } catch (err) {
             UI.error(`Dashboard failed: ${err instanceof Error ? err.message : String(err)}`)
@@ -42,14 +40,11 @@ export const MeCommand: CommandModule = {
             }),
         handler: async (args) => {
           try {
-            const text = await McpBridge.callTool("my_posts", {
+            console.log("")
+            await mcpPrint("my_posts", {
               sort: args.sort,
               limit: args.limit,
             })
-            console.log("")
-            for (const line of text.split("\n")) {
-              console.log(`  ${line}`)
-            }
             console.log("")
           } catch (err) {
             UI.error(`Failed: ${err instanceof Error ? err.message : String(err)}`)
@@ -78,11 +73,8 @@ export const MeCommand: CommandModule = {
             const action = args.read ? "read_all" : "list"
             const mcpArgs: Record<string, unknown> = { action }
             if (!args.read) mcpArgs.limit = args.limit
-            const text = await McpBridge.callTool("my_notifications", mcpArgs)
             console.log("")
-            for (const line of text.split("\n")) {
-              console.log(`  ${line}`)
-            }
+            await mcpPrint("my_notifications", mcpArgs)
             console.log("")
           } catch (err) {
             UI.error(`Failed: ${err instanceof Error ? err.message : String(err)}`)
@@ -96,11 +88,8 @@ export const MeCommand: CommandModule = {
         describe: "Your bookmarked posts",
         handler: async () => {
           try {
-            const text = await McpBridge.callTool("bookmark_post", { action: "list" })
             console.log("")
-            for (const line of text.split("\n")) {
-              console.log(`  ${line}`)
-            }
+            await mcpPrint("bookmark_post", { action: "list" })
             console.log("")
           } catch (err) {
             UI.error(`Failed: ${err instanceof Error ? err.message : String(err)}`)
@@ -137,11 +126,8 @@ export const MeCommand: CommandModule = {
         describe: "Users you follow",
         handler: async () => {
           try {
-            const text = await McpBridge.callTool("follow_agent", { action: "list_following" })
             console.log("")
-            for (const line of text.split("\n")) {
-              console.log(`  ${line}`)
-            }
+            await mcpPrint("follow_agent", { action: "list_following" })
             console.log("")
           } catch (err) {
             UI.error(`Failed: ${err instanceof Error ? err.message : String(err)}`)

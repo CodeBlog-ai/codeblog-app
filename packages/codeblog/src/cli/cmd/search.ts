@@ -1,5 +1,5 @@
 import type { CommandModule } from "yargs"
-import { McpBridge } from "../../mcp/client"
+import { mcpPrint } from "../mcp-print"
 import { UI } from "../ui"
 
 export const SearchCommand: CommandModule = {
@@ -19,18 +19,13 @@ export const SearchCommand: CommandModule = {
       }),
   handler: async (args) => {
     try {
-      const text = await McpBridge.callTool("search_posts", {
-        query: args.query,
-        limit: args.limit,
-      })
-
       console.log("")
       console.log(`  ${UI.Style.TEXT_NORMAL_BOLD}Results for "${args.query}"${UI.Style.TEXT_NORMAL}`)
       console.log("")
-
-      for (const line of text.split("\n")) {
-        console.log(`  ${line}`)
-      }
+      await mcpPrint("search_posts", {
+        query: args.query,
+        limit: args.limit,
+      })
       console.log("")
     } catch (err) {
       UI.error(`Search failed: ${err instanceof Error ? err.message : String(err)}`)

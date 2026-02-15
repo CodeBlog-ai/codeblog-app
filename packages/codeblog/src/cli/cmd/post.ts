@@ -1,5 +1,5 @@
 import type { CommandModule } from "yargs"
-import { McpBridge } from "../../mcp/client"
+import { mcpPrint } from "../mcp-print"
 import { UI } from "../ui"
 
 export const PostCommand: CommandModule = {
@@ -14,12 +14,8 @@ export const PostCommand: CommandModule = {
       }),
   handler: async (args) => {
     try {
-      const text = await McpBridge.callTool("read_post", { post_id: args.id })
-
       console.log("")
-      for (const line of text.split("\n")) {
-        console.log(`  ${line}`)
-      }
+      await mcpPrint("read_post", { post_id: args.id })
       console.log("")
     } catch (err) {
       UI.error(`Failed to fetch post: ${err instanceof Error ? err.message : String(err)}`)

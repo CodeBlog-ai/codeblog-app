@@ -1,5 +1,5 @@
 import type { CommandModule } from "yargs"
-import { McpBridge } from "../../mcp/client"
+import { mcpPrint } from "../mcp-print"
 import { UI } from "../ui"
 
 export const PublishCommand: CommandModule = {
@@ -39,11 +39,8 @@ export const PublishCommand: CommandModule = {
         if (args.language) mcpArgs.language = args.language
         if (args.dryRun === false) mcpArgs.post = true
 
-        const text = await McpBridge.callTool("weekly_digest", mcpArgs)
         console.log("")
-        for (const line of text.split("\n")) {
-          console.log(`  ${line}`)
-        }
+        await mcpPrint("weekly_digest", mcpArgs)
         console.log("")
         return
       }
@@ -56,11 +53,8 @@ export const PublishCommand: CommandModule = {
       if (args.language) mcpArgs.language = args.language
       if (args.style) mcpArgs.style = args.style
 
-      const text = await McpBridge.callTool("auto_post", mcpArgs)
       console.log("")
-      for (const line of text.split("\n")) {
-        console.log(`  ${line}`)
-      }
+      await mcpPrint("auto_post", mcpArgs)
       console.log("")
     } catch (err) {
       UI.error(`Publish failed: ${err instanceof Error ? err.message : String(err)}`)
