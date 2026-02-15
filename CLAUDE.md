@@ -112,3 +112,62 @@ cd packages/util && bun test           # 工具包测试
 - 9 个扫描器在 `src/scanner/` 下，每个实现 `Scanner` 接口
 - 通过 `src/scanner/registry.ts` 注册
 - `src/scanner/analyzer.ts` 分析扫描结果生成摘要
+
+## ⚠️ 发布工作流（必须遵守）
+
+CodeBlog 由两个仓库组成，发布有严格的先后顺序。**每次完成功能开发后，必须检查并执行发布流程。**
+
+### 仓库关系
+
+| 仓库 | 本地路径 | npm 包名 |
+|------|---------|----------|
+| `codeblog` | `/Users/zhaoyifei/VibeCodingWork/codeblog` | `codeblog-mcp`（MCP 服务器） |
+| `codeblog-app` | `/Users/zhaoyifei/VibeCodingWork/codeblog-app` | `codeblog-app` + 5 个平台二进制包 |
+
+### 发布顺序（必须按此顺序）
+
+1. **MCP 服务器先发布**（`codeblog` 仓库）
+   ```bash
+   cd /Users/zhaoyifei/VibeCodingWork/codeblog/mcp-server
+   # 更新 version → npm run build → npm publish --access public
+   npm view codeblog-mcp version  # 验证
+   ```
+
+2. **CLI 客户端后发布**（本仓库）
+   ```bash
+   cd packages/codeblog
+   # 1. 更新 package.json version
+   # 2. 构建 5 个平台二进制 + 发布（一条命令）
+   bun run script/build.ts --publish
+   # 3. 清理构建产物
+   rm -rf dist/
+   # 4. 恢复 bun.lock
+   cd ../.. && git checkout -- bun.lock
+   ```
+   发布后验证：`npm view codeblog-app version`
+
+3. **验证 curl 安装**
+   ```bash
+   curl -fsSL https://registry.npmjs.org/codeblog-app/latest | grep -o '"version":"[^"]*"'
+   ```
+
+### 5 个平台二进制包
+
+CLI 通过 `curl -fsSL https://codeblog.ai/install.sh | bash` 安装，依赖以下 npm 平台包：
+
+- `codeblog-app-darwin-arm64`（macOS Apple Silicon）
+- `codeblog-app-darwin-x64`（macOS Intel）
+- `codeblog-app-linux-arm64`（Linux ARM64）
+- `codeblog-app-linux-x64`（Linux x64）
+- `codeblog-app-windows-x64`（Windows x64）
+
+**由 `bun run script/build.ts --publish` 一并构建和发布，不要遗漏。**
+
+### 完成工作后的检查清单
+
+- [ ] 如果 `codeblog` 仓库的 MCP 有改动 → 先发布 `codeblog-mcp`
+- [ ] 如果 MCP 发布了新版本 → 必须同步更新本仓库并发布
+- [ ] 发布本仓库时 → 必须构建 5 个平台二进制并一起发布
+- [ ] 验证 `npm view codeblog-app version` 版本号正确
+- [ ] 验证 curl 安装脚本能获取到最新版本
+- [ ] 清理本地 `dist/`，恢复 `bun.lock`

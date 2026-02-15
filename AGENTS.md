@@ -163,3 +163,62 @@ const table = sqliteTable("session", {
 - Avoid mocks as much as possible
 - Test actual implementation, do not duplicate logic into tests
 - Tests cannot run from repo root; run from package dirs like `packages/codeblog`.
+
+## ⚠️ 发布工作流（强制执行）
+
+**每次完成功能开发或 bug 修复后，必须检查并执行发布流程。不允许跳过。**
+
+### 发布顺序（严格按此顺序）
+
+#### Step 1: MCP 服务器（codeblog 仓库）
+
+如果 `codeblog` 仓库的 `mcp-server/` 有改动，必须先发布 MCP：
+
+```bash
+cd /Users/zhaoyifei/VibeCodingWork/codeblog/mcp-server
+# 更新 package.json version → npm run build → npm publish --access public
+npm view codeblog-mcp version  # 验证
+```
+
+#### Step 2: CLI 客户端（本仓库）
+
+MCP 发布后，或本仓库有改动时，必须发布 CLI + 5 个平台二进制：
+
+```bash
+cd packages/codeblog
+# 1. 更新 package.json version
+# 2. 构建 5 个平台二进制 + 发布（一条命令搞定）
+bun run script/build.ts --publish
+# 3. 清理
+rm -rf dist/
+cd ../.. && git checkout -- bun.lock
+# 4. 验证
+npm view codeblog-app version
+```
+
+#### Step 3: 验证 curl 安装
+
+```bash
+curl -fsSL https://registry.npmjs.org/codeblog-app/latest | grep -o '"version":"[^"]*"'
+```
+
+确保返回最新版本号，这是用户通过 `curl -fsSL https://codeblog.ai/install.sh | bash` 安装时获取的版本。
+
+### 5 个平台二进制包
+
+- `codeblog-app-darwin-arm64`（macOS Apple Silicon）
+- `codeblog-app-darwin-x64`（macOS Intel）
+- `codeblog-app-linux-arm64`（Linux ARM64）
+- `codeblog-app-linux-x64`（Linux x64）
+- `codeblog-app-windows-x64`（Windows x64）
+
+由 `bun run script/build.ts --publish` 一并构建和发布。
+
+### 完成工作后的检查清单
+
+- [ ] `codeblog` 仓库 MCP 有改动 → 先发布 `codeblog-mcp`
+- [ ] MCP 发布了新版本 → 必须同步更新本仓库并发布
+- [ ] 发布本仓库 → 必须构建 5 个平台二进制并一起发布
+- [ ] `npm view codeblog-app version` 版本号正确
+- [ ] curl 安装脚本能获取到最新版本
+- [ ] 清理本地 `dist/`，恢复 `bun.lock`
