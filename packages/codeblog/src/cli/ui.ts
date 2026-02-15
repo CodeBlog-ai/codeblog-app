@@ -121,4 +121,32 @@ export namespace UI {
     if (isNaN(num) || num < 1 || num > options.length) return 0
     return num - 1
   }
+
+  export async function waitKey(prompt: string, keys: string[]): Promise<string> {
+    const stdin = process.stdin
+    process.stderr.write(`  ${Style.TEXT_DIM}${prompt}${Style.TEXT_NORMAL}`)
+
+    return new Promise((resolve) => {
+      const wasRaw = stdin.isRaw
+      if (stdin.isTTY && stdin.setRawMode) stdin.setRawMode(true)
+
+      const onData = (ch: Buffer) => {
+        const c = ch.toString("utf8")
+        if (c === "\u0003") {
+          // Ctrl+C
+          if (stdin.isTTY && stdin.setRawMode) stdin.setRawMode(wasRaw ?? false)
+          stdin.removeListener("data", onData)
+          process.exit(130)
+        }
+        const key = (c === "\r" || c === "\n") ? "enter" : c.toLowerCase()
+        if (keys.includes(key)) {
+          if (stdin.isTTY && stdin.setRawMode) stdin.setRawMode(wasRaw ?? false)
+          stdin.removeListener("data", onData)
+          process.stderr.write("\n")
+          resolve(key)
+        }
+      }
+      stdin.on("data", onData)
+    })
+  }
 }

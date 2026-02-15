@@ -4,67 +4,25 @@ import { OAuth } from "../../auth/oauth"
 import { McpBridge } from "../../mcp/client"
 import { UI } from "../ui"
 
-function extractApiKey(text: string): string | null {
+export function extractApiKey(text: string): string | null {
   const match = text.match(/^API-KEY:\s*(\S+)/m)
   return match ? match[1]! : null
 }
 
-function extractUsername(text: string): string | null {
-  // Try "Account: username (email)" first (registration path)
+export function extractUsername(text: string): string | null {
   const acct = text.match(/^Account:\s*(\S+)/m)
   if (acct) return acct[1]!
-  // Try "Owner: username" (api_key verification path)
   const owner = text.match(/^Owner:\s*(\S+)/m)
   if (owner) return owner[1]!
   return null
 }
 
-export { extractApiKey, extractUsername }
-
-async function authQuickSignup(): Promise<boolean> {
-  const email = await UI.input("  Email: ")
-  if (!email) { UI.error("Email is required."); return false }
-
-  const username = await UI.input("  Username: ")
-  if (!username) { UI.error("Username is required."); return false }
-
-  const password = await UI.password("  Password: ")
-  if (!password || password.length < 6) { UI.error("Password must be at least 6 characters."); return false }
-
-  const lang = await UI.input("  Language (e.g. English/中文) [English]: ")
-  const default_language = lang || "English"
-
-  console.log("")
-  UI.info("Creating your account...")
-
+async function authBrowser(): Promise<boolean> {
   try {
-    const result = await McpBridge.callTool("codeblog_setup", {
-      email, username, password, default_language,
-    })
-
-    const apiKey = extractApiKey(result)
-    const user = extractUsername(result)
-
-    if (apiKey) {
-      await Auth.set({ type: "apikey", value: apiKey, username: user || username })
-    } else {
-      UI.warn("Account created but could not extract API key from response.")
-      UI.info("Try: codeblog setup → option 3 to paste your API key manually.")
-      return false
-    }
-
-    return true
-  } catch (err) {
-    UI.error(`Signup failed: ${err instanceof Error ? err.message : String(err)}`)
-    return false
-  }
-}
-async function authOAuth(): Promise<boolean> {
-  const provider = await UI.input("  Choose provider (github/google) [github]: ")
-  const chosen = (provider === "google" ? "google" : "github") as "github" | "google"
-
-  try {
-    await OAuth.login(chosen)
+    console.log(`  ${UI.Style.TEXT_DIM}Opening browser...${UI.Style.TEXT_NORMAL}`)
+    console.log(`  ${UI.Style.TEXT_DIM}Log in or sign up on the website, then click Authorize.${UI.Style.TEXT_NORMAL}`)
+    console.log("")
+    await OAuth.login()
     return true
   } catch (err) {
     UI.error(`Authentication failed: ${err instanceof Error ? err.message : String(err)}`)
@@ -141,6 +99,7 @@ async function postAuthFlow(): Promise<void> {
     UI.error(`Scan failed: ${err instanceof Error ? err.message : String(err)}`)
   }
 }
+
 export const SetupCommand: CommandModule = {
   command: "setup",
   describe: "First-time setup wizard: authenticate → scan → publish",
@@ -156,24 +115,17 @@ export const SetupCommand: CommandModule = {
     if (alreadyAuthed) {
       UI.success("Already authenticated!")
     } else {
-      const choice = await UI.select("  How would you like to get started?", [
-        "Quick signup (email + password)",
-        "Login with GitHub / Google",
-        "Paste existing API key",
-      ])
-
+      console.log(`  ${UI.Style.TEXT_NORMAL}Press ${UI.Style.TEXT_HIGHLIGHT}Enter${UI.Style.TEXT_NORMAL} to open browser and log in`)
+      console.log(`  ${UI.Style.TEXT_DIM}Or press ${UI.Style.TEXT_NORMAL}k${UI.Style.TEXT_DIM} to paste an existing API key${UI.Style.TEXT_NORMAL}`)
       console.log("")
 
-      switch (choice) {
-        case 0:
-          authenticated = await authQuickSignup()
-          break
-        case 1:
-          authenticated = await authOAuth()
-          break
-        case 2:
-          authenticated = await authApiKey()
-          break
+      const choice = await UI.waitKey("[Enter/k]: ", ["enter", "k"])
+      console.log("")
+
+      if (choice === "k") {
+        authenticated = await authApiKey()
+      } else {
+        authenticated = await authBrowser()
       }
     }
 
@@ -196,6 +148,7 @@ export const SetupCommand: CommandModule = {
     console.log(`    codeblog scan        ${UI.Style.TEXT_DIM}— Scan IDE sessions${UI.Style.TEXT_NORMAL}`)
     console.log(`    codeblog publish     ${UI.Style.TEXT_DIM}— Publish sessions${UI.Style.TEXT_NORMAL}`)
     console.log(`    codeblog chat        ${UI.Style.TEXT_DIM}— AI chat${UI.Style.TEXT_NORMAL}`)
+    console.log(`    codeblog config      ${UI.Style.TEXT_DIM}— Configure AI provider (optional)${UI.Style.TEXT_NORMAL}`)
     console.log("")
   },
 }
