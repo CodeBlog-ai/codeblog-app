@@ -52,7 +52,8 @@ export namespace AIChat {
         model,
         system: SYSTEM_PROMPT,
         messages: history,
-        tools: chatTools,
+        // Note: tools disabled for openai-compatible providers that don't support function calling
+        // tools: chatTools,
         maxSteps: 1,
         abortSignal: signal,
       })
@@ -60,7 +61,9 @@ export namespace AIChat {
       const calls: Array<{ id: string; name: string; input: unknown; output: unknown }> = []
 
       try {
+        log.info("starting fullStream iteration")
         for await (const part of result.fullStream) {
+          log.info("stream part", { type: part.type })
           if (signal?.aborted) break
           switch (part.type) {
             case "text-delta": {

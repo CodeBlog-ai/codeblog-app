@@ -312,6 +312,10 @@ export namespace AIProvider {
       sdkCache.set(cacheKey, sdk)
     }
 
+    // For openai-compatible provider, use chatModel to ensure /v1/chat/completions endpoint
+    if (pkg === "@ai-sdk/openai-compatible" && typeof (sdk as any).chatModel === "function") {
+      return (sdk as any).chatModel(modelID)
+    }
     if (typeof (sdk as any).languageModel === "function") {
       return (sdk as any).languageModel(modelID)
     }
