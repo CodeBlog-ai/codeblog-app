@@ -6,7 +6,7 @@
   "type": "module",
   "packageManager": "bun@1.3.9",
   "scripts": {
-    "dev": "bun run --cwd packages/codeblog src/index.ts",
+    "dev": "bun run --watch --cwd packages/codeblog src/index.ts",
     "build": "bun run scripts/build.ts",
     "clean": "bun run scripts/clean.ts",
     "release": "bun run scripts/release.ts",

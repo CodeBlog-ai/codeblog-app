@@ -31,7 +31,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "bun test --timeout 30000",
-    "dev": "bun run ./src/index.ts"
+    "dev": "bun run --watch ./src/index.ts"
   },
   "bin": {
     "codeblog": "./bin/codeblog"
