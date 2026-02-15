@@ -13,6 +13,10 @@ const HC = {
 export function ThemeSetup() {
   const theme = useTheme()
   const modes = ["dark", "light"] as const
+  type ThemePalette = (typeof THEMES)[string]
+  const modeAt = (idx: number) => modes[idx] || modes[0]
+  const themeAt = (idx: number) => THEME_NAMES[idx] || "codeblog"
+  const colorsAt = (name: string): ThemePalette => THEMES[name] || THEMES.codeblog!
   const [step, setStep] = createSignal<"mode" | "theme">("mode")
   const [modeIdx, setModeIdx] = createSignal(0)
   const [themeIdx, setThemeIdx] = createSignal(0)
@@ -30,7 +34,7 @@ export function ThemeSetup() {
         return
       }
       if (evt.name === "return") {
-        theme.setMode(modes[modeIdx()])
+        theme.setMode(modeAt(modeIdx()))
         setStep("theme")
         evt.preventDefault()
         return
@@ -41,14 +45,14 @@ export function ThemeSetup() {
       if (evt.name === "up" || evt.name === "k") {
         const next = (themeIdx() - 1 + THEME_NAMES.length) % THEME_NAMES.length
         setThemeIdx(next)
-        theme.set(THEME_NAMES[next])
+        theme.set(themeAt(next))
         evt.preventDefault()
         return
       }
       if (evt.name === "down" || evt.name === "j") {
         const next = (themeIdx() + 1) % THEME_NAMES.length
         setThemeIdx(next)
-        theme.set(THEME_NAMES[next])
+        theme.set(themeAt(next))
         evt.preventDefault()
         return
       }
@@ -104,7 +108,8 @@ export function ThemeSetup() {
           </text>
           <box height={1} />
           {THEME_NAMES.map((name, i) => {
-            const c = THEMES[name][theme.mode]
+            const def = colorsAt(name)
+            const c = def[theme.mode] || def.light
             return (
               <box flexDirection="row" paddingLeft={2}>
                 <text fg={themeIdx() === i ? c.primary : theme.colors.textMuted}>
@@ -136,7 +141,11 @@ export function ThemeSetup() {
 
 export function ThemePicker(props: { onDone: () => void }) {
   const theme = useTheme()
-  const [idx, setIdx] = createSignal(THEME_NAMES.indexOf(theme.name))
+  type ThemePalette = (typeof THEMES)[string]
+  const themeAt = (i: number) => THEME_NAMES[i] || "codeblog"
+  const colorsAt = (name: string): ThemePalette => THEMES[name] || THEMES.codeblog!
+  const initialIdx = Math.max(0, THEME_NAMES.indexOf(theme.name))
+  const [idx, setIdx] = createSignal(initialIdx)
   const [tab, setTab] = createSignal<"theme" | "mode">("theme")
 
   useKeyboard((evt) => {
@@ -144,14 +153,14 @@ export function ThemePicker(props: { onDone: () => void }) {
       if (evt.name === "up" || evt.name === "k") {
         const next = (idx() - 1 + THEME_NAMES.length) % THEME_NAMES.length
         setIdx(next)
-        theme.set(THEME_NAMES[next])
+        theme.set(themeAt(next))
         evt.preventDefault()
         return
       }
       if (evt.name === "down" || evt.name === "j") {
         const next = (idx() + 1) % THEME_NAMES.length
         setIdx(next)
-        theme.set(THEME_NAMES[next])
+        theme.set(themeAt(next))
         evt.preventDefault()
         return
       }
@@ -204,7 +213,8 @@ export function ThemePicker(props: { onDone: () => void }) {
           </text>
           <box height={1} />
           {THEME_NAMES.map((name, i) => {
-            const c = THEMES[name][theme.mode]
+            const def = colorsAt(name)
+            const c = def[theme.mode] || def.light
             return (
               <box flexDirection="row">
                 <text fg={idx() === i ? c.primary : theme.colors.textMuted}>

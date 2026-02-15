@@ -3,6 +3,21 @@ import { Config } from "../../config"
 import { AIProvider } from "../../ai/provider"
 import { UI } from "../ui"
 
+function validUrl(input: string): boolean {
+  try {
+    const url = new URL(input)
+    return url.protocol === "http:" || url.protocol === "https:"
+  } catch {
+    return false
+  }
+}
+
+function argError(message: string, hint?: string) {
+  UI.error(message)
+  if (hint) UI.info(hint)
+  process.exitCode = 2
+}
+
 export const ConfigCommand: CommandModule = {
   command: "config",
   describe: "Configure AI provider, model, and server settings",
@@ -46,6 +61,13 @@ export const ConfigCommand: CommandModule = {
       }),
   handler: async (args) => {
     try {
+      const provider = typeof args.provider === "string" ? args.provider.trim() : ""
+      const apiKey = typeof args.apiKey === "string" ? args.apiKey.trim() : ""
+      const model = typeof args.model === "string" ? args.model.trim() : ""
+      const url = typeof args.url === "string" ? args.url.trim() : ""
+      const baseUrl = typeof args.baseUrl === "string" ? args.baseUrl.trim() : ""
+      const language = typeof args.language === "string" ? args.language.trim() : ""
+
       if (args.path) {
         console.log(Config.filepath)
         return
@@ -84,49 +106,69 @@ export const ConfigCommand: CommandModule = {
         return
       }
 
-      if (args.provider && (args.apiKey || args.baseUrl)) {
+      if (!provider && (apiKey || baseUrl)) {
+        argError("--api-key/--base-url requires --provider", "Example: codeblog config --provider openai --api-key sk-...")
+        return
+      }
+
+      if (provider && !apiKey && !baseUrl) {
+        argError("--provider requires --api-key or --base-url", "Example: codeblog config --provider anthropic --api-key sk-ant-...")
+        return
+      }
+
+      if (url && !validUrl(url)) {
+        argError("Invalid --url. Use an absolute http/https URL", "Example: codeblog config --url https://codeblog.ai")
+        return
+      }
+
+      if (baseUrl && !validUrl(baseUrl)) {
+        argError("Invalid --base-url. Use an absolute http/https URL", "Example: codeblog config --provider openai-compatible --base-url https://proxy.example.com")
+        return
+      }
+
+      if (provider && (apiKey || baseUrl)) {
         const cfg = await Config.load()
         const providers = cfg.providers || {}
-        const existing = providers[args.provider as string] || {} as Config.ProviderConfig
-        if (args.apiKey) existing.api_key = args.apiKey as string
-        if (args.baseUrl) existing.base_url = args.baseUrl as string
-        providers[args.provider as string] = existing
+        const existing = providers[provider] || {} as Config.ProviderConfig
+        if (apiKey) existing.api_key = apiKey
+        if (baseUrl) existing.base_url = baseUrl
+        providers[provider] = existing
         await Config.save({ providers })
         const parts: string[] = []
-        if (args.apiKey) parts.push("API key")
-        if (args.baseUrl) parts.push(`base URL (${args.baseUrl})`)
-        UI.success(`${args.provider} ${parts.join(" + ")} saved`)
+        if (apiKey) parts.push("API key")
+        if (baseUrl) parts.push(`base URL (${baseUrl})`)
+        UI.success(`${provider} ${parts.join(" + ")} saved`)
         return
       }
 
-      if (args.model) {
-        await Config.save({ model: args.model as string })
-        UI.success(`Default model set to ${args.model}`)
+      if (model) {
+        await Config.save({ model })
+        UI.success(`Default model set to ${model}`)
         return
       }
 
-      if (args.url) {
-        await Config.save({ api_url: args.url as string })
-        UI.success(`Server URL set to ${args.url}`)
+      if (url) {
+        await Config.save({ api_url: url })
+        UI.success(`Server URL set to ${url}`)
         return
       }
 
-      if (args.language) {
-        await Config.save({ default_language: args.language as string })
-        UI.success(`Default language set to ${args.language}`)
+      if (language) {
+        await Config.save({ default_language: language })
+        UI.success(`Default language set to ${language}`)
         return
       }
 
       // Show current config
       const cfg = await Config.load()
-      const model = cfg.model || AIProvider.DEFAULT_MODEL
+      const currentModel = cfg.model || AIProvider.DEFAULT_MODEL
       const providers = cfg.providers || {}
 
       console.log("")
       console.log(`  ${UI.Style.TEXT_NORMAL_BOLD}Current Config${UI.Style.TEXT_NORMAL}`)
       console.log(`  ${UI.Style.TEXT_DIM}${Config.filepath}${UI.Style.TEXT_NORMAL}`)
       console.log("")
-      console.log(`  Model:     ${UI.Style.TEXT_HIGHLIGHT}${model}${UI.Style.TEXT_NORMAL}`)
+      console.log(`  Model:     ${UI.Style.TEXT_HIGHLIGHT}${currentModel}${UI.Style.TEXT_NORMAL}`)
       console.log(`  API URL:   ${cfg.api_url || "https://codeblog.ai"}`)
       console.log(`  Language:  ${cfg.default_language || `${UI.Style.TEXT_DIM}(server default)${UI.Style.TEXT_NORMAL}`}`)
       console.log("")

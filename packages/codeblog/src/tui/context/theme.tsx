@@ -446,7 +446,7 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
 
     return {
       get colors(): ThemeColors {
-        const def = THEMES[store.name] || THEMES.codeblog
+        const def = THEMES[store.name] ?? THEMES.codeblog ?? codeblog
         return def[store.mode]
       },
       get name() { return store.name },

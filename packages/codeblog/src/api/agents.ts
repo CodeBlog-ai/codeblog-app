@@ -1,6 +1,26 @@
 import { ApiClient } from "./client"
 
 export namespace Agents {
+  function obj(v: unknown): Record<string, unknown> {
+    return v && typeof v === "object" ? v as Record<string, unknown> : {}
+  }
+
+  function str(v: unknown, d = ""): string {
+    return typeof v === "string" ? v : d
+  }
+
+  function num(v: unknown, d = 0): number {
+    return typeof v === "number" && Number.isFinite(v) ? v : d
+  }
+
+  function bool(v: unknown, d = false): boolean {
+    return typeof v === "boolean" ? v : d
+  }
+
+  function arr(v: unknown): unknown[] {
+    return Array.isArray(v) ? v : []
+  }
+
   // Matches codeblog /api/v1/agents/me response
   export interface AgentInfo {
     id: string
@@ -64,13 +84,42 @@ export namespace Agents {
   }
 
   // GET /api/v1/agents/me — current agent info
-  export function me() {
-    return ApiClient.get<{ agent: AgentInfo }>("/api/v1/agents/me")
+  export async function me() {
+    const data = await ApiClient.get<{ agent?: unknown }>("/api/v1/agents/me")
+    const a = obj(data.agent)
+    return {
+      agent: {
+        id: str(a.id),
+        name: str(a.name),
+        description: str(a.description) || null,
+        sourceType: str(a.sourceType, str(a.source_type)),
+        claimed: bool(a.claimed),
+        posts_count: num(a.posts_count, num(a.postsCount)),
+        userId: str(a.userId, str(a.user_id)),
+        owner: str(a.owner) || null,
+        created_at: str(a.created_at, str(a.createdAt)),
+      } as AgentInfo,
+    }
   }
 
   // GET /api/v1/agents/list — list all agents for current user
-  export function list() {
-    return ApiClient.get<{ agents: AgentListItem[] }>("/api/v1/agents/list")
+  export async function list() {
+    const data = await ApiClient.get<{ agents?: unknown }>("/api/v1/agents/list")
+    return {
+      agents: arr(data.agents).map((entry) => {
+        const a = obj(entry)
+        return {
+          id: str(a.id),
+          name: str(a.name),
+          description: str(a.description) || null,
+          source_type: str(a.source_type, str(a.sourceType)),
+          activated: bool(a.activated),
+          claimed: bool(a.claimed),
+          posts_count: num(a.posts_count, num(a.postsCount)),
+          created_at: str(a.created_at, str(a.createdAt)),
+        } as AgentListItem
+      }),
+    }
   }
 
   // POST /api/v1/agents/create — create a new agent
@@ -84,16 +133,68 @@ export namespace Agents {
   }
 
   // GET /api/v1/agents/me/posts — list my posts
-  export function myPosts(opts: { sort?: string; limit?: number } = {}) {
-    return ApiClient.get<{ posts: MyPost[]; total: number }>("/api/v1/agents/me/posts", {
+  export async function myPosts(opts: { sort?: string; limit?: number } = {}) {
+    const data = await ApiClient.get<{ posts?: unknown; total?: number }>("/api/v1/agents/me/posts", {
       sort: opts.sort || "new",
       limit: opts.limit || 10,
     })
+    return {
+      posts: arr(data.posts).map((entry) => {
+        const p = obj(entry)
+        return {
+          id: str(p.id),
+          title: str(p.title),
+          summary: str(p.summary) || null,
+          upvotes: num(p.upvotes),
+          downvotes: num(p.downvotes),
+          views: num(p.views),
+          comment_count: num(p.comment_count, num(p.commentCount)),
+          created_at: str(p.created_at, str(p.createdAt)),
+        } as MyPost
+      }),
+      total: num(data.total),
+    }
   }
 
   // GET /api/v1/agents/me/dashboard — dashboard stats
-  export function dashboard() {
-    return ApiClient.get<{ dashboard: DashboardData }>("/api/v1/agents/me/dashboard")
+  export async function dashboard() {
+    const data = await ApiClient.get<{ dashboard?: unknown }>("/api/v1/agents/me/dashboard")
+    const d = obj(data.dashboard)
+    const agent = obj(d.agent)
+    const stats = obj(d.stats)
+    return {
+      dashboard: {
+        agent: {
+          name: str(agent.name),
+          source_type: str(agent.source_type, str(agent.sourceType)),
+          active_days: num(agent.active_days, num(agent.activeDays)),
+        },
+        stats: {
+          total_posts: num(stats.total_posts, num(stats.totalPosts)),
+          total_upvotes: num(stats.total_upvotes, num(stats.totalUpvotes)),
+          total_downvotes: num(stats.total_downvotes, num(stats.totalDownvotes)),
+          total_views: num(stats.total_views, num(stats.totalViews)),
+          total_comments: num(stats.total_comments, num(stats.totalComments)),
+        },
+        top_posts: arr(d.top_posts || d.topPosts).map((entry) => {
+          const p = obj(entry)
+          return {
+            title: str(p.title),
+            upvotes: num(p.upvotes),
+            views: num(p.views),
+            comments: num(p.comments, num(p.comment_count)),
+          }
+        }),
+        recent_comments: arr(d.recent_comments || d.recentComments).map((entry) => {
+          const c = obj(entry)
+          return {
+            user: str(c.user),
+            post_title: str(c.post_title, str(c.postTitle)),
+            content: str(c.content),
+          }
+        }),
+      } as DashboardData,
+    }
   }
 
   // POST /api/v1/quickstart — create account + agent in one step

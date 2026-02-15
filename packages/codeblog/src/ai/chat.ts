@@ -1,4 +1,4 @@
-import { streamText, type CoreMessage, type CoreToolMessage, type CoreAssistantMessage } from "ai"
+import { stepCountIs, streamText, type ModelMessage } from "ai"
 import { AIProvider } from "./provider"
 import { chatTools } from "./tools"
 import { Log } from "../util/log"
@@ -31,19 +31,20 @@ export namespace AIChat {
     onToken?: (token: string) => void
     onFinish?: (text: string) => void
     onError?: (error: Error) => void
-    onToolCall?: (name: string, args: unknown) => void
-    onToolResult?: (name: string, result: unknown) => void
+    onToolCall?: (name: string, args: unknown, toolCallId: string) => void
+    onToolResult?: (name: string, result: unknown, toolCallId: string) => void
   }
 
   export async function stream(messages: Message[], callbacks: StreamCallbacks, modelID?: string, signal?: AbortSignal) {
     const model = await AIProvider.getModel(modelID)
-    log.info("streaming", { model: modelID || AIProvider.DEFAULT_MODEL, messages: messages.length })
+    log.info("streaming", { model: modelID || "configured-model", messages: messages.length })
 
-    // Build history: only user/assistant text (tool context is added per-step below)
-    const history: CoreMessage[] = messages
+    // Build history: only user/assistant text (tool context is added per-step below).
+    const history: ModelMessage[] = messages
       .filter((m) => m.role === "user" || m.role === "assistant")
       .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }))
-    let full = ""
+    let final = ""
+    let usedTool = false
 
     for (let step = 0; step < 5; step++) {
       if (signal?.aborted) break
@@ -53,81 +54,125 @@ export namespace AIChat {
         system: SYSTEM_PROMPT,
         messages: history,
         tools: chatTools,
-        maxSteps: 1,
+        stopWhen: stepCountIs(1),
         abortSignal: signal,
       })
 
-      const calls: Array<{ id: string; name: string; input: unknown; output: unknown }> = []
+      const calls = new Map<string, { id: string; name: string; input: unknown; output?: unknown }>()
+      const callOrder: string[] = []
+      let done = false
+      let usedStepTool = false
+      let stepText = ""
+      let sawDelta = false
 
       try {
         for await (const part of result.fullStream) {
           if (signal?.aborted) break
           switch (part.type) {
             case "text-delta": {
-              const delta = (part as any).text ?? (part as any).textDelta ?? ""
-              if (delta) { full += delta; callbacks.onToken?.(delta) }
+              const delta = part.text ?? ""
+              if (!delta) break
+              stepText += delta
+              sawDelta = true
               break
             }
             case "tool-call": {
-              const input = (part as any).input ?? (part as any).args
-              callbacks.onToolCall?.(part.toolName, input)
-              calls.push({ id: part.toolCallId, name: part.toolName, input, output: undefined })
+              usedTool = true
+              usedStepTool = true
+              callbacks.onToolCall?.(part.toolName, part.input, part.toolCallId)
+              if (!calls.has(part.toolCallId)) {
+                calls.set(part.toolCallId, {
+                  id: part.toolCallId,
+                  name: part.toolName,
+                  input: part.input,
+                })
+                callOrder.push(part.toolCallId)
+              }
               break
             }
             case "tool-result": {
-              const output = (part as any).output ?? (part as any).result ?? {}
-              const name = (part as any).toolName
-              callbacks.onToolResult?.(name, output)
-              const match = calls.find((c) => c.name === name && c.output === undefined)
-              if (match) match.output = output
+              callbacks.onToolResult?.(part.toolName, part.output, part.toolCallId)
+              const call = calls.get(part.toolCallId)
+              if (call) call.output = part.output
               break
             }
             case "error": {
               const msg = part.error instanceof Error ? part.error.message : String(part.error)
               log.error("stream part error", { error: msg })
-              callbacks.onError?.(part.error instanceof Error ? part.error : new Error(msg))
+              throw (part.error instanceof Error ? part.error : new Error(msg))
+            }
+            case "finish-step":
+            case "finish":
+            case "abort": {
+              done = true
+              break
+            }
+            default: {
+              const type = part.type as string
+              if (type.includes("finish") || type.includes("abort")) done = true
               break
             }
           }
+          if (done) break
         }
       } catch (err) {
         const error = err instanceof Error ? err : new Error(String(err))
         log.error("stream error", { error: error.message })
         if (callbacks.onError) callbacks.onError(error)
         else throw error
-        return full
+        return final
       }
 
-      if (calls.length === 0) break
+      if (!sawDelta && !usedStepTool) {
+        const fallback = await result.text.then(
+          (v) => v.trim(),
+          () => "",
+        )
+        if (fallback) stepText = fallback
+      }
 
-      // AI SDK v6 ModelMessage format:
-      // AssistantModelMessage with ToolCallPart uses "input"
-      // ToolModelMessage with ToolResultPart uses "output: { type: 'json', value }"
+      if (!usedStepTool) {
+        if (stepText) {
+          final += stepText
+          callbacks.onToken?.(stepText)
+        }
+        break
+      }
+
+      const orderedCalls = callOrder
+        .map((id) => calls.get(id))
+        .filter((call): call is { id: string; name: string; input: unknown; output?: unknown } => !!call)
+
       history.push({
         role: "assistant",
-        content: calls.map((c) => ({
+        content: orderedCalls.map((call) => ({
           type: "tool-call" as const,
-          toolCallId: c.id,
-          toolName: c.name,
-          input: c.input,
+          toolCallId: call.id,
+          toolName: call.name,
+          input: call.input,
         })),
-      } as CoreMessage)
+      })
 
       history.push({
         role: "tool",
-        content: calls.map((c) => ({
+        content: orderedCalls.map((call) => ({
           type: "tool-result" as const,
-          toolCallId: c.id,
-          toolName: c.name,
-          output: { type: "json" as const, value: c.output ?? {} },
+          toolCallId: call.id,
+          toolName: call.name,
+          output: {
+            type: "json" as const,
+            value: toJSONValue(call.output),
+          },
         })),
-      } as CoreMessage)
+      })
 
-      log.info("tool step done", { step, tools: calls.map((c) => c.name) })
+      log.info("tool step done", { step, tools: orderedCalls.map((call) => call.name) })
     }
 
-    callbacks.onFinish?.(full || "(No response)")
-    return full
+    const text = final.trim()
+    if (text) callbacks.onFinish?.(text)
+    else callbacks.onFinish?.(usedTool ? "(Tools completed, but model returned no final answer.)" : "(No response)")
+    return text
   }
 
   export async function generate(prompt: string, modelID?: string) {
@@ -165,5 +210,13 @@ Respond in this exact JSON format:
     const jsonMatch = raw.match(/\{[\s\S]*\}/)
     if (!jsonMatch) throw new Error("AI did not return valid JSON")
     return JSON.parse(jsonMatch[0])
+  }
+}
+
+function toJSONValue(value: unknown) {
+  try {
+    return JSON.parse(JSON.stringify(value ?? null))
+  } catch {
+    return { error: "Non-serializable tool output" }
   }
 }

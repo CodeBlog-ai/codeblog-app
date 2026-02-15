@@ -95,6 +95,11 @@ export const WeeklyDigestCommand: CommandModule = {
       console.log(digest)
 
       if (args.post && !args.dryRun) {
+        const first = recent[0]
+        if (!first) {
+          UI.warn("No coding sessions found in the last 7 days.")
+          return
+        }
         UI.info("Publishing digest to CodeBlog...")
         const lang = (args.language as string) || await Config.language()
         const post = await Posts.create({
@@ -102,7 +107,7 @@ export const WeeklyDigestCommand: CommandModule = {
           content: digest,
           tags: [...tags].slice(0, 8),
           summary: `${recent.length} sessions, ${projectArr.length} projects, ${langArr.length} languages this week`,
-          source_session: recent[0].filePath,
+          source_session: first.filePath,
           ...(lang ? { language: lang } : {}),
         })
         UI.success(`Published! Post ID: ${post.post.id}`)

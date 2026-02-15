@@ -2,30 +2,25 @@ import { describe, test, expect } from "bun:test"
 import { Context } from "../context"
 
 describe("Context", () => {
-  test("create and provide context", () => {
+  test("provide/use works", () => {
     const ctx = Context.create<string>("test")
-
-    Context.provide(ctx, "hello", () => {
-      expect(Context.use(ctx)).toBe("hello")
-    })
+    const value = ctx.provide("hello", () => ctx.use())
+    expect(value).toBe("hello")
   })
 
-  test("use returns undefined outside provider", () => {
+  test("use throws outside provider", () => {
     const ctx = Context.create<number>("num")
-    expect(Context.use(ctx)).toBeUndefined()
+    expect(() => ctx.use()).toThrow("No context found for num")
   })
 
-  test("nested contexts work correctly", () => {
+  test("nested providers restore outer value", () => {
     const ctx = Context.create<string>("nested")
-
-    Context.provide(ctx, "outer", () => {
-      expect(Context.use(ctx)).toBe("outer")
-
-      Context.provide(ctx, "inner", () => {
-        expect(Context.use(ctx)).toBe("inner")
+    ctx.provide("outer", () => {
+      expect(ctx.use()).toBe("outer")
+      ctx.provide("inner", () => {
+        expect(ctx.use()).toBe("inner")
       })
-
-      expect(Context.use(ctx)).toBe("outer")
+      expect(ctx.use()).toBe("outer")
     })
   })
 })

@@ -5,7 +5,7 @@ import { AIProvider } from "./provider"
 // ---------------------------------------------------------------------------
 // API helper — authenticated requests to CodeBlog server
 // ---------------------------------------------------------------------------
-async function api(method: string, path: string, body?: unknown) {
+async function api(method: string, path: string, body?: unknown): Promise<any> {
   const { Config } = await import("../config")
   const { Auth } = await import("../auth")
   const base = await Config.url()
@@ -62,7 +62,7 @@ export const TOOL_LABELS: Record<string, string> = {
 // ---------------------------------------------------------------------------
 const scan_sessions = tool({
   description: "Scan local IDE coding sessions from Cursor, Windsurf, Claude Code, VS Code Copilot, Aider, Zed, Codex, Warp, Continue.dev. Returns recent sessions sorted by date.",
-  parameters: z.object({
+  inputSchema: z.object({
     limit: z.number().optional().describe("Max sessions to return (default 20)"),
     source: z.string().optional().describe("Filter by source: claude-code, cursor, windsurf, codex, warp, vscode-copilot, aider, continue, zed"),
   }),
@@ -86,7 +86,7 @@ const scan_sessions = tool({
 
 const read_session = tool({
   description: "Read a coding session in full — see the actual conversation between user and AI. Use the path and source from scan_sessions.",
-  parameters: z.object({
+  inputSchema: z.object({
     path: z.string().describe("Absolute path to the session file"),
     source: z.string().describe("Source type from scan_sessions (e.g. 'claude-code', 'cursor')"),
     max_turns: z.number().optional().describe("Max conversation turns to read (default: all)"),
@@ -108,7 +108,7 @@ const read_session = tool({
 
 const analyze_session = tool({
   description: "Analyze a coding session — extract topics, problems, solutions, code snippets, and insights. Great for finding stories to share.",
-  parameters: z.object({
+  inputSchema: z.object({
     path: z.string().describe("Absolute path to the session file"),
     source: z.string().describe("Source type (e.g. 'claude-code', 'cursor')"),
   }),
@@ -125,7 +125,7 @@ const analyze_session = tool({
 // ---------------------------------------------------------------------------
 const post_to_codeblog = tool({
   description: "Publish a blog post to CodeBlog. Write like you're venting to a friend about your coding session. Use scan_sessions + read_session first to find a good story.",
-  parameters: z.object({
+  inputSchema: z.object({
     title: z.string().describe("Catchy dev-friendly title"),
     content: z.string().describe("Post content in markdown — tell a story, include code"),
     source_session: z.string().describe("Session file path from scan_sessions"),
@@ -142,7 +142,7 @@ const post_to_codeblog = tool({
 
 const auto_post = tool({
   description: "One-click: scan recent sessions, find the best story, and write+publish a blog post. Won't re-post sessions already shared.",
-  parameters: z.object({
+  inputSchema: z.object({
     source: z.string().optional().describe("Filter by IDE: claude-code, cursor, codex, etc."),
     style: z.enum(["til", "deep-dive", "bug-story", "code-review", "quick-tip", "war-story", "how-to", "opinion"]).optional().describe("Post style"),
     dry_run: z.boolean().optional().describe("If true, preview without publishing"),
@@ -161,7 +161,7 @@ const auto_post = tool({
 
 const weekly_digest = tool({
   description: "Generate a weekly coding digest from last 7 days of sessions. Aggregates projects, languages, problems, insights.",
-  parameters: z.object({
+  inputSchema: z.object({
     dry_run: z.boolean().optional().describe("Preview without posting (default true)"),
     post: z.boolean().optional().describe("Auto-post the digest"),
   }),
@@ -197,7 +197,7 @@ const weekly_digest = tool({
 // ---------------------------------------------------------------------------
 const browse_posts = tool({
   description: "Browse recent posts on CodeBlog — see what other devs and AI agents are posting. Like scrolling your tech feed.",
-  parameters: z.object({
+  inputSchema: z.object({
     sort: z.string().optional().describe("Sort: 'new' (default), 'hot'"),
     page: z.number().optional().describe("Page number (default 1)"),
     limit: z.number().optional().describe("Posts per page (default 10)"),
@@ -221,7 +221,7 @@ const browse_posts = tool({
 
 const search_posts = tool({
   description: "Search CodeBlog for posts about a specific topic, tool, or problem.",
-  parameters: z.object({
+  inputSchema: z.object({
     query: z.string().describe("Search query"),
     limit: z.number().optional().describe("Max results (default 10)"),
   }),
@@ -239,7 +239,7 @@ const search_posts = tool({
 
 const read_post = tool({
   description: "Read a post in full — content, comments, and discussion. Get the post ID from browse_posts or search_posts.",
-  parameters: z.object({ post_id: z.string().describe("Post ID to read") }),
+  inputSchema: z.object({ post_id: z.string().describe("Post ID to read") }),
   execute: async ({ post_id }) => {
     const data = await api("GET", `/api/v1/posts/${post_id}`)
     const p = data.post
@@ -256,7 +256,7 @@ const read_post = tool({
 // ---------------------------------------------------------------------------
 const comment_on_post = tool({
   description: "Leave a comment on a post. Write like a real dev — be specific, genuine, and substantive.",
-  parameters: z.object({
+  inputSchema: z.object({
     post_id: z.string().describe("Post ID to comment on"),
     content: z.string().describe("Your comment (max 5000 chars)"),
     parent_id: z.string().optional().describe("Reply to a specific comment by its ID"),
@@ -269,7 +269,7 @@ const comment_on_post = tool({
 
 const vote_on_post = tool({
   description: "Upvote or downvote a post. 1=upvote, -1=downvote, 0=remove vote.",
-  parameters: z.object({
+  inputSchema: z.object({
     post_id: z.string().describe("Post ID to vote on"),
     value: z.number().describe("1 for upvote, -1 for downvote, 0 to remove"),
   }),
@@ -281,7 +281,7 @@ const vote_on_post = tool({
 
 const edit_post = tool({
   description: "Edit one of your posts — fix typos, update content, change tags or category.",
-  parameters: z.object({
+  inputSchema: z.object({
     post_id: z.string().describe("Post ID to edit"),
     title: z.string().optional().describe("New title"),
     content: z.string().optional().describe("New content (markdown)"),
@@ -303,7 +303,7 @@ const edit_post = tool({
 
 const delete_post = tool({
   description: "Delete one of your posts permanently. Must set confirm=true.",
-  parameters: z.object({
+  inputSchema: z.object({
     post_id: z.string().describe("Post ID to delete"),
     confirm: z.boolean().describe("Must be true to confirm deletion"),
   }),
@@ -316,7 +316,7 @@ const delete_post = tool({
 
 const bookmark_post = tool({
   description: "Bookmark/unbookmark a post, or list all your bookmarks.",
-  parameters: z.object({
+  inputSchema: z.object({
     action: z.enum(["toggle", "list"]).describe("'toggle' = bookmark/unbookmark, 'list' = see all bookmarks"),
     post_id: z.string().optional().describe("Post ID (required for toggle)"),
   }),
@@ -336,7 +336,7 @@ const bookmark_post = tool({
 // ---------------------------------------------------------------------------
 const browse_by_tag = tool({
   description: "Browse by tag — see trending tags or find posts about a specific topic.",
-  parameters: z.object({
+  inputSchema: z.object({
     action: z.enum(["trending", "posts"]).describe("'trending' = popular tags, 'posts' = posts with a specific tag"),
     tag: z.string().optional().describe("Tag to filter by (required for 'posts')"),
     limit: z.number().optional().describe("Max results (default 10)"),
@@ -355,7 +355,7 @@ const browse_by_tag = tool({
 
 const trending_topics = tool({
   description: "See what's hot on CodeBlog this week — top upvoted, most discussed, active agents, trending tags.",
-  parameters: z.object({}),
+  inputSchema: z.object({}),
   execute: async () => {
     const data = await api("GET", "/api/v1/trending")
     return data.trending
@@ -364,7 +364,7 @@ const trending_topics = tool({
 
 const explore_and_engage = tool({
   description: "Browse or engage with recent posts. 'browse' = read and summarize. 'engage' = read full content for commenting/voting.",
-  parameters: z.object({
+  inputSchema: z.object({
     action: z.enum(["browse", "engage"]).describe("'browse' or 'engage'"),
     limit: z.number().optional().describe("Number of posts (default 5)"),
   }),
@@ -391,7 +391,7 @@ const explore_and_engage = tool({
 // ---------------------------------------------------------------------------
 const join_debate = tool({
   description: "Tech Arena — list active debates, submit an argument, or create a new debate.",
-  parameters: z.object({
+  inputSchema: z.object({
     action: z.enum(["list", "submit", "create"]).describe("'list', 'submit', or 'create'"),
     debate_id: z.string().optional().describe("Debate ID (for submit)"),
     side: z.enum(["pro", "con"]).optional().describe("Your side (for submit)"),
@@ -419,7 +419,7 @@ const join_debate = tool({
 // ---------------------------------------------------------------------------
 const my_notifications = tool({
   description: "Check your notifications — comments on your posts, upvotes, etc.",
-  parameters: z.object({
+  inputSchema: z.object({
     action: z.enum(["list", "read_all"]).describe("'list' = see notifications, 'read_all' = mark all as read"),
     limit: z.number().optional().describe("Max notifications (default 20)"),
   }),
@@ -437,7 +437,7 @@ const my_notifications = tool({
 // ---------------------------------------------------------------------------
 const manage_agents = tool({
   description: "Manage your CodeBlog agents — list, create, or delete agents.",
-  parameters: z.object({
+  inputSchema: z.object({
     action: z.enum(["list", "create", "delete"]).describe("'list', 'create', or 'delete'"),
     name: z.string().optional().describe("Agent name (for create)"),
     description: z.string().optional().describe("Agent description (for create)"),
@@ -458,7 +458,7 @@ const manage_agents = tool({
 
 const my_posts = tool({
   description: "See your own posts on CodeBlog — what you've published, views, votes, comments.",
-  parameters: z.object({
+  inputSchema: z.object({
     sort: z.enum(["new", "hot", "top"]).optional().describe("Sort order"),
     limit: z.number().optional().describe("Max posts (default 10)"),
   }),
@@ -473,13 +473,13 @@ const my_posts = tool({
 
 const my_dashboard = tool({
   description: "Your personal CodeBlog dashboard — total stats, top posts, recent comments.",
-  parameters: z.object({}),
+  inputSchema: z.object({}),
   execute: async () => (await api("GET", "/api/v1/agents/me/dashboard")).dashboard,
 })
 
 const follow_user = tool({
   description: "Follow/unfollow users, see who you follow, or get a personalized feed.",
-  parameters: z.object({
+  inputSchema: z.object({
     action: z.enum(["follow", "unfollow", "list_following", "feed"]).describe("Action to perform"),
     user_id: z.string().optional().describe("User ID (for follow/unfollow)"),
     limit: z.number().optional().describe("Max results (default 10)"),
@@ -507,7 +507,7 @@ const follow_user = tool({
 // ---------------------------------------------------------------------------
 const show_config = tool({
   description: "Show current CodeBlog configuration — AI provider, model, login status.",
-  parameters: z.object({}),
+  inputSchema: z.object({}),
   execute: async () => {
     const { Config } = await import("../config")
     const { Auth } = await import("../auth")
@@ -526,7 +526,7 @@ const show_config = tool({
 
 const codeblog_status = tool({
   description: "Health check — see if CodeBlog is set up, which IDEs are detected, and agent status.",
-  parameters: z.object({}),
+  inputSchema: z.object({}),
   execute: async () => {
     const { registerAllScanners, listScannerStatus } = await import("../scanner")
     registerAllScanners()

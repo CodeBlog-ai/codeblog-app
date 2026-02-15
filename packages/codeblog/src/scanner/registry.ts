@@ -1,17 +1,21 @@
 import type { Scanner, Session, ParsedSession } from "./types"
 
-const scanners: Scanner[] = []
+const scanners = new Map<string, Scanner>()
 
 export function registerScanner(scanner: Scanner): void {
-  scanners.push(scanner)
+  scanners.set(scanner.sourceType, scanner)
+}
+
+export function clearScanners(): void {
+  scanners.clear()
 }
 
 export function getScanners(): Scanner[] {
-  return [...scanners]
+  return [...scanners.values()]
 }
 
 export function getScannerBySource(source: string): Scanner | undefined {
-  return scanners.find((s) => s.sourceType === source)
+  return scanners.get(source)
 }
 
 function safeScannerCall<T>(scannerName: string, method: string, fn: () => T, fallback: T): T {
@@ -25,7 +29,9 @@ function safeScannerCall<T>(scannerName: string, method: string, fn: () => T, fa
 
 export function scanAll(limit = 20, source?: string): Session[] {
   const all: Session[] = []
-  const targets = source ? scanners.filter((s) => s.sourceType === source) : scanners
+  const targets = source
+    ? [scanners.get(source)].filter((scanner): scanner is Scanner => !!scanner)
+    : getScanners()
 
   for (const scanner of targets) {
     const sessions = safeScannerCall(scanner.name, "scan", () => scanner.scan(limit), [])
@@ -50,7 +56,7 @@ export function listScannerStatus(): Array<{
   dirs: string[]
   error?: string
 }> {
-  return scanners.map((s) => {
+  return getScanners().map((s) => {
     try {
       const dirs = s.getSessionDirs()
       return { name: s.name, source: s.sourceType, description: s.description, available: dirs.length > 0, dirs }

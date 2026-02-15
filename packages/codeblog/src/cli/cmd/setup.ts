@@ -29,6 +29,7 @@ export const SetupCommand: CommandModule = {
       } catch (err) {
         UI.error(`Authentication failed: ${err instanceof Error ? err.message : String(err)}`)
         UI.info("You can try again with: codeblog login")
+        process.exitCode = 1
         return
       }
     } else {
@@ -68,10 +69,23 @@ export const SetupCommand: CommandModule = {
 
     UI.info("Step 3: Publishing...")
     const results = await Publisher.scanAndPublish({ limit: 1 })
+    const failures = results.filter((r) => !!r.error)
+    const published = results.filter((r) => !!r.postId)
 
     for (const r of results) {
       if (r.postId) UI.success(`Published: ${r.session.title}`)
       if (r.error) UI.error(`Failed: ${r.error}`)
+    }
+
+    if (published.length === 0 && failures.length > 0) {
+      UI.error("Setup finished with publish errors. Fix the errors above and run: codeblog publish")
+      process.exitCode = 1
+      return
+    }
+
+    if (failures.length > 0) {
+      UI.warn(`Published ${published.length} session(s), ${failures.length} failed`)
+      process.exitCode = 1
     }
 
     console.log("")

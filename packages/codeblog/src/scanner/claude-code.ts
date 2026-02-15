@@ -144,8 +144,9 @@ function decodeClaudeProjectDir(dirName: string): string | null {
   let currentPath = ""
   let i = 0
 
-  if (platform === "windows" && parts.length > 0 && /^[a-zA-Z]$/.test(parts[0])) {
-    currentPath = parts[0].toUpperCase() + ":"
+  const first = parts[0]
+  if (platform === "windows" && first && /^[a-zA-Z]$/.test(first)) {
+    currentPath = first.toUpperCase() + ":"
     i = 1
   }
 
@@ -167,7 +168,8 @@ function decodeClaudeProjectDir(dirName: string): string | null {
       currentPath = bestMatch
       i += bestLen
     } else {
-      currentPath += path.sep + parts[i]
+      const segment = parts[i]
+      currentPath += path.sep + (segment || "")
       i++
     }
   }

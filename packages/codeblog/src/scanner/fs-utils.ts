@@ -100,7 +100,8 @@ export function extractProjectDescription(projectPath: string): string | null {
   const cargo = safeReadFile(cargoPath)
   if (cargo) {
     const match = cargo.match(/description\s*=\s*"([^"]+)"/)
-    if (match) return match[1].slice(0, 200)
+    const desc = match?.[1]
+    if (desc) return desc.slice(0, 200)
   }
 
   return null

@@ -1,50 +1,38 @@
-import { describe, test, expect } from "bun:test"
-import { safeReadFile, safeReadJson, safeExists, safeListFiles } from "../fs-utils"
-import path from "path"
+import { describe, expect, test } from "bun:test"
 import fs from "fs"
 import os from "os"
+import path from "path"
+import { listDirs, listFiles, safeReadFile, safeReadJson, safeStats } from "../fs-utils"
 
 describe("fs-utils", () => {
-  const tmpDir = path.join(os.tmpdir(), "codeblog-test-" + Date.now())
-
-  test("safeReadFile returns null for non-existent file", () => {
-    const result = safeReadFile("/nonexistent/file.txt")
-    expect(result).toBeNull()
+  test("safeReadFile returns null for missing file", () => {
+    expect(safeReadFile("/nonexistent/file.txt")).toBeNull()
   })
 
-  test("safeReadFile reads existing file", () => {
-    fs.mkdirSync(tmpDir, { recursive: true })
-    const file = path.join(tmpDir, "test.txt")
-    fs.writeFileSync(file, "hello world")
-    const result = safeReadFile(file)
-    expect(result).toBe("hello world")
-    fs.rmSync(tmpDir, { recursive: true })
+  test("safeReadJson parses valid json", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "codeblog-fs-"))
+    const file = path.join(dir, "a.json")
+    fs.writeFileSync(file, '{"a":1}')
+    expect(safeReadJson<{ a: number }>(file)?.a).toBe(1)
+    fs.rmSync(dir, { recursive: true, force: true })
   })
 
-  test("safeReadJson returns null for non-existent file", () => {
-    const result = safeReadJson("/nonexistent/file.json")
-    expect(result).toBeNull()
-  })
+  test("listFiles and listDirs list local paths", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "codeblog-fs-"))
+    const sub = path.join(dir, "sub")
+    fs.mkdirSync(sub)
+    fs.writeFileSync(path.join(dir, "a.txt"), "x")
+    fs.writeFileSync(path.join(sub, "b.json"), "{}")
 
-  test("safeReadJson parses valid JSON", () => {
-    fs.mkdirSync(tmpDir, { recursive: true })
-    const file = path.join(tmpDir, "test.json")
-    fs.writeFileSync(file, '{"key": "value"}')
-    const result = safeReadJson(file)
-    expect(result).toEqual({ key: "value" })
-    fs.rmSync(tmpDir, { recursive: true })
-  })
+    const dirs = listDirs(dir)
+    const files = listFiles(dir, [".txt"], false)
+    const nested = listFiles(dir, [".json"], true)
 
-  test("safeExists returns false for non-existent path", () => {
-    expect(safeExists("/nonexistent/path")).toBe(false)
-  })
+    expect(dirs.some((p) => p.endsWith("/sub")) || dirs.some((p) => p.endsWith("\\sub"))).toBe(true)
+    expect(files.length).toBe(1)
+    expect(nested.length).toBe(1)
+    expect(safeStats(path.join(dir, "a.txt"))?.size).toBeGreaterThan(0)
 
-  test("safeExists returns true for existing path", () => {
-    expect(safeExists("/tmp")).toBe(true)
-  })
-
-  test("safeListFiles returns empty array for non-existent dir", () => {
-    const result = safeListFiles("/nonexistent/dir")
-    expect(result).toEqual([])
+    fs.rmSync(dir, { recursive: true, force: true })
   })
 })

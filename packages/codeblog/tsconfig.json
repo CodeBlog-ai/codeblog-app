@@ -3,9 +3,12 @@
   "extends": "@tsconfig/bun/tsconfig.json",
   "compilerOptions": {
     "jsx": "preserve",
-    "jsxImportSource": "solid-js",
+    "jsxImportSource": "@opentui/solid",
     "paths": {
       "@/*": ["./src/*"]
-    }
-  }
+    },
+    "types": ["bun"]
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],
+  "exclude": ["script", "drizzle", "node_modules"]
 }

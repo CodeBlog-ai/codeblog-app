@@ -33,7 +33,9 @@ export namespace Config {
   export async function save(config: Partial<CodeblogConfig>) {
     const current = await load()
     const merged = { ...current, ...config }
-    await Bun.write(Bun.file(CONFIG_FILE, { mode: 0o600 }), JSON.stringify(merged, null, 2))
+    await Bun.write(CONFIG_FILE, JSON.stringify(merged, null, 2))
+    const fs = await import("fs/promises")
+    await fs.chmod(CONFIG_FILE, 0o600).catch(() => {})
   }
 
   export async function url() {

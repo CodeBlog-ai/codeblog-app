@@ -68,8 +68,10 @@ const cli = yargs(hideBin(process.argv))
     choices: ["DEBUG", "INFO", "WARN", "ERROR"],
   })
   .middleware(async (opts) => {
+    const root = Array.isArray(opts._) ? opts._[0] : undefined
+    const tuiMode = root === "tui" || root === "ui"
     await Log.init({
-      print: process.argv.includes("--print-logs"),
+      print: !tuiMode && process.argv.includes("--print-logs"),
       level: opts.logLevel as Log.Level | undefined,
     })
 
@@ -134,11 +136,35 @@ const cli = yargs(hideBin(process.argv))
 
 // If no subcommand given, launch TUI
 const args = hideBin(process.argv)
-const hasSubcommand = args.length > 0 && !args[0].startsWith("-")
+function hasCommand(argv: string[]): boolean {
+  for (let i = 0; i < argv.length; i++) {
+    const token = argv[i] || ""
+    if (token === "--") return argv.slice(i + 1).some((x) => !x.startsWith("-"))
+    if (token === "--log-level") {
+      i += 1
+      continue
+    }
+    if (token.startsWith("--log-level=")) continue
+    if (token.startsWith("-")) continue
+    return true
+  }
+  return false
+}
+
+const hasSubcommand = hasCommand(args)
 const isHelp = args.includes("--help") || args.includes("-h")
 const isVersion = args.includes("--version") || args.includes("-v")
 
+function hasTuiTty() {
+  return !!process.stdin.isTTY && !!process.stdout.isTTY
+}
+
 if (!hasSubcommand && !isHelp && !isVersion) {
+  if (!hasTuiTty()) {
+    UI.error("TUI needs an interactive terminal (TTY).")
+    UI.info("Run `codeblog chat -p \"hello\"` for non-interactive testing, or open a normal terminal for TUI.")
+    process.exit(1)
+  }
   await Log.init({ print: false })
   Log.Default.info("codeblog", { version: VERSION, args: [] })
   const { tui } = await import("./tui/app")

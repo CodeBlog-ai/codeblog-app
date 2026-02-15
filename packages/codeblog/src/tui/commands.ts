@@ -51,7 +51,7 @@ export function createCommands(deps: CommandDeps): CmdDef[] {
     { name: "/dark", description: "Switch to dark mode", action: () => { deps.setMode("dark"); deps.showMsg("Dark mode", deps.colors.text) } },
     { name: "/light", description: "Switch to light mode", action: () => { deps.setMode("light"); deps.showMsg("Light mode", deps.colors.text) } },
     { name: "/exit", description: "Exit CodeBlog", action: () => deps.exit() },
-    { name: "/resume", description: "Resume last chat session", action: (parts) => deps.resume(parts[1]) },
+    { name: "/resume", description: "Resume chat: /resume <index|id>", action: (parts) => deps.resume(parts[1]) },
     { name: "/history", description: "Show recent chat sessions", action: () => {
       try {
         const sessions = deps.listSessions()

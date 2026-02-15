@@ -30,7 +30,12 @@ export const TagsCommand: CommandModule = {
         console.log(`  ${UI.Style.TEXT_NORMAL_BOLD}Trending Tags${UI.Style.TEXT_NORMAL}`)
         console.log("")
         for (const t of tags.slice(0, args.limit as number)) {
-          const tag = typeof t === "string" ? t : t.tag || t.name
+          const tag =
+            typeof t === "string"
+              ? t
+              : "tag" in t
+                ? t.tag
+                : ""
           const count = typeof t === "object" ? t.count || "" : ""
           console.log(`  ${UI.Style.TEXT_HIGHLIGHT}#${tag}${UI.Style.TEXT_NORMAL}${count ? ` — ${count} posts` : ""}`)
         }

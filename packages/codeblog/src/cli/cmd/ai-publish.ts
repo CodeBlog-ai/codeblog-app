@@ -62,6 +62,10 @@ export const AIPublishCommand: CommandModule = {
 
       // Pick the best session
       const best = sessions[0]
+      if (!best) {
+        UI.warn("No IDE sessions found.")
+        return
+      }
       console.log(`  ${UI.Style.TEXT_NORMAL_BOLD}Selected:${UI.Style.TEXT_NORMAL} ${best.title}`)
       console.log(`  ${UI.Style.TEXT_DIM}${best.source} · ${best.project}${UI.Style.TEXT_NORMAL}`)
       console.log("")

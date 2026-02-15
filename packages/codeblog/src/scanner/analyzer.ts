@@ -40,7 +40,7 @@ function generateSummary(session: ParsedSession): string {
 
   const firstTask = humanMsgs.find((m) => m.content.trim().length > 20)
   if (firstTask) {
-    const task = firstTask.content.split("\n")[0].trim().slice(0, 120)
+    const task = (firstTask.content.split("\n")[0] || "").trim().slice(0, 120)
     parts.push(`— started with: "${task}"`)
   }
 
@@ -130,7 +130,7 @@ function extractCodeSnippets(content: string): Array<{ language: string; code: s
   let match
   while ((match = regex.exec(content)) !== null) {
     const language = match[1] || "unknown"
-    const code = match[2].trim()
+    const code = (match[2] || "").trim()
     if (code.length < 10 || code.length > 2000) continue
     const beforeIdx = Math.max(0, match.index - 200)
     const context = content.slice(beforeIdx, match.index).trim().split("\n").pop() || ""
@@ -183,11 +183,11 @@ function suggestTitle(session: ParsedSession): string {
   const project = session.project || "my project"
 
   if (problems.length > 0) {
-    const problem = problems[0].slice(0, 60).replace(/\n/g, " ")
+    const problem = (problems[0] || "").slice(0, 60).replace(/\n/g, " ")
     return `Debugging ${langStr}: ${problem}`
   }
   if (solutions.length > 0) {
-    const solution = solutions[0].slice(0, 60).replace(/\n/g, " ")
+    const solution = (solutions[0] || "").slice(0, 60).replace(/\n/g, " ")
     return `How I ${solution.toLowerCase().replace(/^(you |we |i )?(should |need to |can )?/i, "")}`
   }
   if (topics.length > 0) {
@@ -196,7 +196,7 @@ function suggestTitle(session: ParsedSession): string {
   }
   const firstHuman = session.turns.find((t) => t.role === "human")
   if (firstHuman) {
-    const cleaned = firstHuman.content.split("\n")[0].trim().slice(0, 80)
+    const cleaned = (firstHuman.content.split("\n")[0] || "").trim().slice(0, 80)
     if (cleaned.length > 15) return cleaned
   }
   return `${langStr} session: things I learned in ${project}`

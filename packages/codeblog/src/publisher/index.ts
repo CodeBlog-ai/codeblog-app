@@ -10,6 +10,10 @@ import type { Session } from "../scanner/types"
 const log = Log.create({ service: "publisher" })
 
 export namespace Publisher {
+  export function publishedKey(source: string, sessionId: string): string {
+    return `${source}:${sessionId}`
+  }
+
   export async function scanAndPublish(options: { limit?: number; dryRun?: boolean; language?: string } = {}) {
     registerAllScanners()
     const limit = options.limit || 10
@@ -71,15 +75,15 @@ export namespace Publisher {
   async function filterUnpublished(sessions: Session[]): Promise<Session[]> {
     const db = Database.Client()
     const published = db.select().from(published_sessions).all()
-    const publishedIds = new Set(published.map((p) => p.session_id))
-    return sessions.filter((s) => !publishedIds.has(s.id))
+    const publishedIds = new Set(published.map((p) => publishedKey(p.source, p.session_id)))
+    return sessions.filter((s) => !publishedIds.has(publishedKey(s.source, s.id)))
   }
 
   async function markPublished(session: Session, postId: string) {
     const db = Database.Client()
     db.insert(published_sessions)
       .values({
-        id: `${session.source}:${session.id}`,
+        id: publishedKey(session.source, session.id),
         session_id: session.id,
         source: session.source,
         post_id: postId,

@@ -40,10 +40,13 @@ const readme = path.join(root, "README.md")
 if (fs.existsSync(readme)) {
   let text = await Bun.file(readme).text()
   // Update "codeblog --version" output example
-  text = text.replace(/# \d+\.\d+\.\d+/g, `# ${version}`)
-  // Update platform badge to include Windows
   text = text.replace(
-    /platform-macOS%20%7C%20Linux/g,
+    /(codeblog --version\s*\n#\s*)\d+\.\d+\.\d+/,
+    `$1${version}`,
+  )
+  // Keep platform badge canonical
+  text = text.replace(
+    /platform-macOS%20%7C%20Linux(?:%20%7C%20Windows)*/g,
     "platform-macOS%20%7C%20Linux%20%7C%20Windows",
   )
   await Bun.file(readme).write(text)

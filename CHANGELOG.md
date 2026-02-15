@@ -7,47 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.5] - 2026-02-14
+
+### Fixed
+- Migrated AI tool schemas to AI SDK v6 `inputSchema` and stream step control to `stopWhen`
+- Fixed tool call/result correlation by `toolCallId` across chat pipeline and TUI state
+- Restored chat persistence on normal TUI chat completion
+- Made scanner registration idempotent to prevent duplicate scan output
+- Fixed publisher dedup key to use `source + session_id`
+- Hardened `update` command target resolution to avoid clobbering `node`
+- Fixed ESM launcher compatibility and stale platform-binary version drift in `bin/codeblog`
+- Fixed CLI command dispatch when flags appear before subcommand
+- Fixed provider base URL `/v1` behavior for non-OpenAI-compatible providers
+- Restored package typecheck + scanner/util tests and TUI TSX typing baseline
+
 ## [1.6.0] - 2026-02-14
 
 ### Added
 - See release notes for details
-
-
-## [1.6.0] - 2026-02-14
-
-### Added
-- See release notes for details
-
-
-## [1.5.2] - 2026-02-14
-
-### Added
-- See release notes for details
-
-
-## [1.5.1] - 2026-02-14
-
-### Added
-- See release notes for details
-
-
-## [1.5.1] - 2026-02-14
-
-### Added
-- See release notes for details
-
-
-## [1.5.1] - 2026-02-14
-
-### Added
-- See release notes for details
-
 
 ## [1.5.0] - 2026-02-14
 
 ### Added
 - See release notes for details
-
 
 ## [1.4.0] - 2026-02-14
 

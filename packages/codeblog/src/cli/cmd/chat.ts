@@ -45,11 +45,18 @@ export const ChatCommand: CommandModule = {
     // Non-interactive: single prompt
     if (args.prompt) {
       try {
+        let wrote = false
         await AIChat.stream(
           [{ role: "user", content: args.prompt as string }],
           {
-            onToken: (token) => process.stdout.write(token),
-            onFinish: () => process.stdout.write("\n"),
+            onToken: (token) => {
+              wrote = true
+              process.stdout.write(token)
+            },
+            onFinish: (text) => {
+              if (!wrote && text.trim()) process.stdout.write(text)
+              process.stdout.write("\n")
+            },
             onError: (err) => UI.error(err.message),
           },
           modelID,
@@ -91,7 +98,7 @@ export const ChatCommand: CommandModule = {
 
       // Handle commands
       if (input.startsWith("/")) {
-        const cmd = input.split(" ")[0]
+        const cmd = input.split(" ")[0] || ""
         const rest = input.slice(cmd.length).trim()
 
         if (cmd === "/exit" || cmd === "/quit" || cmd === "/q") {
@@ -157,7 +164,11 @@ export const ChatCommand: CommandModule = {
               process.stdout.write(token)
               response += token
             },
-            onFinish: () => {
+            onFinish: (text) => {
+              if (!response.trim() && text.trim()) {
+                process.stdout.write(text)
+                response = text
+              }
               process.stdout.write(UI.Style.TEXT_NORMAL)
               console.log("")
               console.log("")

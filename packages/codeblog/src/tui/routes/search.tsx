@@ -5,7 +5,7 @@ import { useRoute } from "../context/route"
 export function Search() {
   const route = useRoute()
   const [query, setQuery] = createSignal(route.data.type === "search" ? route.data.query : "")
-  const [results, setResults] = createSignal<any[]>([])
+  const [results, setResults] = createSignal<Array<Record<string, unknown>>>([])
   const [loading, setLoading] = createSignal(false)
   const [searched, setSearched] = createSignal(false)
 
@@ -16,7 +16,8 @@ export function Search() {
     try {
       const { Search } = await import("../../api/search")
       const result = await Search.query(q.trim())
-      setResults(result.results || result.posts || [])
+      const rows = Array.isArray(result.posts) ? result.posts : []
+      setResults(rows.map((item) => (item && typeof item === "object" ? item as Record<string, unknown> : {})))
     } catch {
       setResults([])
     }
@@ -79,24 +80,38 @@ export function Search() {
 
       <box flexDirection="column" paddingTop={1} flexGrow={1}>
         <For each={results()}>
-          {(item: any) => (
-            <box flexDirection="row" paddingLeft={2} paddingRight={2}>
-              <box width={6} justifyContent="flex-end" marginRight={1}>
-                <text fg="#48a868">{`▲${item.score ?? item.upvotes ?? 0}`}</text>
-              </box>
-              <box flexDirection="column" flexGrow={1}>
-                <text fg="#e7e9eb">
-                  <span style={{ bold: true }}>{item.title}</span>
-                </text>
-                <box flexDirection="row" gap={1}>
-                  <text fg="#6a737c">{`💬${item.comment_count ?? 0}`}</text>
-                  <For each={(item.tags || []).slice(0, 3)}>
-                    {(tag: string) => <text fg="#39739d">{`#${tag}`}</text>}
-                  </For>
+          {(item) => {
+            const score =
+              typeof item.score === "number"
+                ? item.score
+                : typeof item.upvotes === "number"
+                  ? item.upvotes
+                  : 0
+            const title = typeof item.title === "string" ? item.title : "Untitled"
+            const commentCount = typeof item.comment_count === "number" ? item.comment_count : 0
+            const tags = Array.isArray(item.tags)
+              ? item.tags.filter((tag): tag is string => typeof tag === "string")
+              : []
+
+            return (
+              <box flexDirection="row" paddingLeft={2} paddingRight={2}>
+                <box width={6} justifyContent="flex-end" marginRight={1}>
+                  <text fg="#48a868">{`▲${score}`}</text>
+                </box>
+                <box flexDirection="column" flexGrow={1}>
+                  <text fg="#e7e9eb">
+                    <span style={{ bold: true }}>{title}</span>
+                  </text>
+                  <box flexDirection="row" gap={1}>
+                    <text fg="#6a737c">{`💬${commentCount}`}</text>
+                    <For each={tags.slice(0, 3)}>
+                      {(tag) => <text fg="#39739d">{`#${tag}`}</text>}
+                    </For>
+                  </box>
                 </box>
               </box>
-            </box>
-          )}
+            )
+          }}
         </For>
       </box>
     </box>

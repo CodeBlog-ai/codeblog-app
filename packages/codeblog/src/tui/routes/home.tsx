@@ -11,6 +11,7 @@ import { ChatHistory } from "../../storage/chat"
 interface ChatMsg {
   role: "user" | "assistant" | "tool"
   content: string
+  toolCallId?: string
   toolName?: string
   toolStatus?: "running" | "done" | "error"
 }
@@ -37,8 +38,8 @@ export function Home(props: {
   const [streaming, setStreaming] = createSignal(false)
   const [streamText, setStreamText] = createSignal("")
   let abortCtrl: AbortController | undefined
-  let escCooldown = 0
   let sessionId = ""
+  let turnId = 0
   const chatting = createMemo(() => messages().length > 0 || streaming())
 
   function ensureSession() {
@@ -48,21 +49,40 @@ export function Home(props: {
     }
   }
 
-  function saveChat() {
+  function saveChat(next?: ChatMsg[]) {
     if (!sessionId) return
-    try { ChatHistory.save(sessionId, messages()) } catch {}
+    try { ChatHistory.save(sessionId, next || messages()) } catch {}
   }
 
   function resumeSession(sid?: string) {
     try {
-      if (!sid) {
-        const sessions = ChatHistory.list(1)
-        if (sessions.length === 0) { showMsg("No previous sessions", theme.colors.warning); return }
-        sid = sessions[0].id
+      const sessions = ChatHistory.list(20)
+      if (sessions.length === 0) { showMsg("No previous sessions", theme.colors.warning); return }
+      const input = sid?.trim()
+      let resolved = input || ""
+
+      if (!resolved) {
+        if (sessions.length === 1) {
+          resolved = sessions[0]?.id || ""
+        } else {
+          const lines = sessions.map((s, i) => `${i + 1}. ${s.title || "(untitled)"} (${s.count} msgs)`)
+          showMsg(`Choose a session with /resume <index>: ${lines.join(" | ")}`, theme.colors.text)
+          return
+        }
       }
-      const msgs = ChatHistory.load(sid)
+
+      if (!resolved) { showMsg("No previous sessions", theme.colors.warning); return }
+
+      if (/^\d+$/.test(resolved)) {
+        const i = Number(resolved) - 1
+        const selected = sessions[i]
+        if (!selected) { showMsg("Invalid session index", theme.colors.warning); return }
+        resolved = selected.id
+      }
+
+      const msgs = ChatHistory.load(resolved)
       if (msgs.length === 0) { showMsg("Session is empty", theme.colors.warning); return }
-      sessionId = sid
+      sessionId = resolved
       setMessages(msgs as ChatMsg[])
       showMsg("Resumed session", theme.colors.success)
     } catch { showMsg("Failed to resume", theme.colors.error) }
@@ -93,7 +113,7 @@ export function Home(props: {
   }
 
   function clearChat() {
-    setMessages([]); setStreamText(""); setStreaming(false); setMessage("")
+    setMessages([]); setStreamText(""); setStreaming(false); setMessage(""); setInput(""); setSelectedIdx(0)
     sessionId = ""
   }
 
@@ -149,6 +169,36 @@ export function Home(props: {
     setStreaming(true)
     setStreamText("")
     setMessage("")
+    const turn = ++turnId
+    let done = false
+    let full = ""
+    const stale = () => turn !== turnId
+    const pushAssistant = (list: ChatMsg[], content: string) => {
+      const text = content.trim()
+      if (!text) return list
+      const last = list[list.length - 1]
+      if (last?.role === "assistant" && last.content.trim() === text) return list
+      return [...list, { role: "assistant" as const, content: text }]
+    }
+    const settle = (list: ChatMsg[], status: "done" | "error") =>
+      list.map((m) =>
+        m.role === "tool" && m.toolStatus === "running"
+          ? { ...m, toolStatus: status }
+          : m
+      )
+    const finish = (next: ChatMsg[]) => {
+      done = true
+      setMessages(next)
+      setStreamText("")
+      setStreaming(false)
+      abortCtrl = undefined
+      saveChat(next)
+      if (turnId === turn) turnId = 0
+    }
+    const timeoutId = setTimeout(() => {
+      if (stale() || done) return
+      abortCtrl?.abort()
+    }, 120000)
 
     try {
       const { AIChat } = await import("../../ai/chat")
@@ -157,53 +207,69 @@ export function Home(props: {
       const cfg = await Config.load()
       const mid = cfg.model || AIProvider.DEFAULT_MODEL
       const allMsgs = [...prev, userMsg].map((m) => ({ role: m.role as "user" | "assistant", content: m.content }))
-      let full = ""
       abortCtrl = new AbortController()
       await AIChat.stream(allMsgs, {
-        onToken: (token) => { full += token; setStreamText(full) },
-        onToolCall: (name) => {
-          // Save any accumulated text as assistant message before tool
-          if (full.trim()) {
-            setMessages((p) => [...p, { role: "assistant", content: full.trim() }])
+        onToken: (token) => {
+          if (stale() || done || !token) return
+          full += token
+          setStreamText(full)
+        },
+        onToolCall: (name, _args, toolCallId) => {
+          if (stale() || done) return
+          setMessages((p) => {
+            const withText = p
             full = ""
             setStreamText("")
-          }
-          setMessages((p) => [...p, { role: "tool", content: TOOL_LABELS[name] || name, toolName: name, toolStatus: "running" }])
+            const idx = withText.findIndex((m) => m.role === "tool" && m.toolCallId === toolCallId)
+            if (idx >= 0) {
+              return withText.map((m, i) =>
+                i === idx
+                  ? {
+                      ...m,
+                      content: TOOL_LABELS[name] || name,
+                      toolName: name,
+                      toolStatus: "running" as const,
+                    }
+                  : m
+              )
+            }
+            return [
+              ...withText,
+              {
+                role: "tool",
+                content: TOOL_LABELS[name] || name,
+                toolCallId,
+                toolName: name,
+                toolStatus: "running" as const,
+              },
+            ]
+          })
         },
-        onToolResult: (name) => {
+        onToolResult: (_name, _result, toolCallId) => {
+          if (stale() || done) return
           setMessages((p) => p.map((m) =>
-            m.role === "tool" && m.toolName === name && m.toolStatus === "running"
+            m.role === "tool" && m.toolCallId === toolCallId && m.toolStatus === "running"
               ? { ...m, toolStatus: "done" as const }
               : m
           ))
         },
-        onFinish: () => {
-          if (full.trim()) {
-            setMessages((p) => [...p, { role: "assistant", content: full.trim() }])
-          }
-          setStreamText(""); setStreaming(false)
+        onFinish: (text) => {
+          if (stale() || done) return
+          finish(pushAssistant(settle(messages(), "done"), full.trim() || text.trim()))
         },
         onError: (err) => {
-          setMessages((p) => {
-            // Mark any running tools as error
-            const updated = p.map((m) =>
-              m.role === "tool" && m.toolStatus === "running"
-                ? { ...m, toolStatus: "error" as const }
-                : m
-            )
-            return [...updated, { role: "assistant" as const, content: `Error: ${err.message}` }]
-          })
-          setStreamText(""); setStreaming(false)
-          saveChat()
+          if (stale() || done) return
+          finish(pushAssistant(settle(messages(), "error"), `Error: ${err.message}`))
         },
       }, mid, abortCtrl.signal)
-      abortCtrl = undefined
+      if (stale() || done) return
+      const fallback = full.trim() || "(No response)"
+      finish(pushAssistant(settle(messages(), "done"), fallback))
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      setMessages((p) => [...p, { role: "assistant", content: `Error: ${msg}` }])
-      setStreamText("")
-      setStreaming(false)
-      saveChat()
+      if (!stale() && !done) finish(pushAssistant(settle(messages(), "error"), `Error: ${msg}`))
+    } finally {
+      clearTimeout(timeoutId)
     }
   }
 
@@ -315,6 +381,7 @@ export function Home(props: {
 
     // Escape while streaming → abort; while chatting → clear
     if (evt.name === "escape" && streaming()) {
+      turnId = 0
       abortCtrl?.abort()
       const cur = streamText()
       if (cur.trim()) setMessages((p) => [...p, { role: "assistant", content: cur.trim() + "\n\n(interrupted)" }])
@@ -336,88 +403,95 @@ export function Home(props: {
     <box flexDirection="column" flexGrow={1} paddingLeft={2} paddingRight={2}>
       {/* When no chat: show logo centered */}
       <Show when={!chatting()}>
-        <box flexGrow={1} minHeight={0} />
-        <box flexShrink={0} flexDirection="column" alignItems="center">
+        <box flexDirection="column" flexGrow={1} minHeight={0}>
+          <box flexGrow={1} minHeight={0} />
+          <box flexShrink={0} flexDirection="column" alignItems="center">
           {LOGO.map((line, i) => (
             <text fg={i < 4 ? theme.colors.logo1 : theme.colors.logo2}>{line}</text>
           ))}
           <box height={1} />
           <text fg={theme.colors.textMuted}>The AI-powered coding forum</text>
-        </box>
-        <Show when={!props.loggedIn || !props.hasAI}>
-          <box flexShrink={0} flexDirection="column" paddingTop={1} alignItems="center">
-            <box flexDirection="row" gap={1}>
-              <text fg={props.hasAI ? theme.colors.success : theme.colors.warning}>{props.hasAI ? "✓" : "●"}</text>
-              <text fg={props.hasAI ? theme.colors.textMuted : theme.colors.text}>
-                {props.hasAI ? `AI: ${props.modelName}` : "Type /ai to configure AI"}
-              </text>
-            </box>
-            <box flexDirection="row" gap={1}>
-              <text fg={props.loggedIn ? theme.colors.success : theme.colors.warning}>{props.loggedIn ? "✓" : "●"}</text>
-              <text fg={props.loggedIn ? theme.colors.textMuted : theme.colors.text}>
-                {props.loggedIn ? `Logged in as ${props.username}` : "Type /login to sign in"}
-              </text>
-            </box>
           </box>
-        </Show>
+          <Show when={!props.loggedIn || !props.hasAI}>
+            <box flexShrink={0} flexDirection="column" paddingTop={1} alignItems="center">
+              <box flexDirection="row" gap={1}>
+                <text fg={props.hasAI ? theme.colors.success : theme.colors.warning}>{props.hasAI ? "✓" : "●"}</text>
+                <text fg={props.hasAI ? theme.colors.textMuted : theme.colors.text}>
+                  {props.hasAI ? `AI: ${props.modelName}` : "Type /ai to configure AI"}
+                </text>
+              </box>
+              <box flexDirection="row" gap={1}>
+                <text fg={props.loggedIn ? theme.colors.success : theme.colors.warning}>{props.loggedIn ? "✓" : "●"}</text>
+                <text fg={props.loggedIn ? theme.colors.textMuted : theme.colors.text}>
+                  {props.loggedIn ? `Logged in as ${props.username}` : "Type /login to sign in"}
+                </text>
+              </box>
+            </box>
+          </Show>
+          <box flexGrow={1} minHeight={0} />
+        </box>
       </Show>
 
       {/* When chatting: messages fill the space */}
       <Show when={chatting()}>
-        <box flexDirection="column" flexGrow={1} paddingTop={1} overflow="scroll">
+        <scrollbox
+          flexDirection="column"
+          flexGrow={1}
+          minHeight={0}
+          paddingTop={1}
+          stickyScroll={streaming()}
+          stickyStart="bottom"
+          scrollY
+          focused={false}
+        >
           <For each={messages()}>
             {(msg) => (
-              <box flexShrink={0}>
+              <box flexShrink={0} width="100%">
                 {/* User message — bold with ❯ prefix */}
                 <Show when={msg.role === "user"}>
-                  <box flexDirection="row" paddingBottom={1}>
+                  <box flexDirection="row" paddingBottom={1} width="100%">
                     <text fg={theme.colors.primary} flexShrink={0}>
                       <span style={{ bold: true }}>{"❯ "}</span>
                     </text>
-                    <text fg={theme.colors.text}>
+                    <text fg={theme.colors.text} flexGrow={1} wrapMode="word" truncate={false}>
                       <span style={{ bold: true }}>{msg.content}</span>
                     </text>
                   </box>
                 </Show>
                 {/* Tool execution — ⚙/✓ icon + tool name + status */}
                 <Show when={msg.role === "tool"}>
-                  <box flexDirection="row" paddingLeft={2}>
+                  <box flexDirection="row" paddingLeft={2} width="100%">
                     <text fg={msg.toolStatus === "done" ? theme.colors.success : msg.toolStatus === "error" ? theme.colors.error : theme.colors.warning} flexShrink={0}>
                       {msg.toolStatus === "done" ? "  ✓ " : msg.toolStatus === "error" ? "  ✗ " : "  ⚙ "}
                     </text>
-                    <text fg={theme.colors.textMuted}>
+                    <text fg={theme.colors.textMuted} flexGrow={1} wrapMode="word" truncate={false}>
                       {msg.content}
                     </text>
                   </box>
                 </Show>
                 {/* Assistant message — ◆ prefix */}
                 <Show when={msg.role === "assistant"}>
-                  <box flexDirection="row" paddingBottom={1}>
+                  <box flexDirection="row" paddingBottom={1} width="100%">
                     <text fg={theme.colors.success} flexShrink={0}>
                       <span style={{ bold: true }}>{"◆ "}</span>
                     </text>
-                    <text fg={theme.colors.text}>{msg.content}</text>
+                    <text fg={theme.colors.text} flexGrow={1} wrapMode="word" truncate={false}>{msg.content}</text>
                   </box>
                 </Show>
               </box>
             )}
           </For>
           <Show when={streaming()}>
-            <box flexDirection="row" paddingBottom={1} flexShrink={0}>
+            <box flexDirection="row" paddingBottom={1} flexShrink={0} width="100%">
               <text fg={theme.colors.success} flexShrink={0}>
                 <span style={{ bold: true }}>{"◆ "}</span>
               </text>
-              <text fg={streamText() ? theme.colors.text : theme.colors.textMuted}>
+              <text fg={streamText() ? theme.colors.text : theme.colors.textMuted} flexGrow={1} wrapMode="word" truncate={false}>
                 {streamText() || shimmerText()}
               </text>
             </box>
           </Show>
-        </box>
-      </Show>
-
-      {/* Spacer when no chat and no autocomplete */}
-      <Show when={!chatting()}>
-        <box flexGrow={1} minHeight={0} />
+        </scrollbox>
       </Show>
 
       {/* Prompt — always at bottom */}

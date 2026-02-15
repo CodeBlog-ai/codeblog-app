@@ -16,7 +16,7 @@ import { createGateway } from "@ai-sdk/gateway"
 import { createTogetherAI } from "@ai-sdk/togetherai"
 import { createPerplexity } from "@ai-sdk/perplexity"
 import { createVercel } from "@ai-sdk/vercel"
-import { type LanguageModel, type Provider as SDK } from "ai"
+import { type LanguageModel } from "ai"
 import { Config } from "../config"
 import { Log } from "../util/log"
 import { Global } from "../global"
@@ -25,28 +25,47 @@ import path from "path"
 const log = Log.create({ service: "ai-provider" })
 
 export namespace AIProvider {
+  type ProviderFactory = (options: Record<string, unknown>) => unknown
+  type ProviderWithLanguageModel = {
+    languageModel: (modelId: string) => LanguageModel
+  }
+
+  function provider(fn: unknown): ProviderFactory {
+    return fn as ProviderFactory
+  }
+
+  function hasLanguageModel(input: unknown): input is ProviderWithLanguageModel {
+    if (!input || typeof input !== "object") return false
+    if (!("languageModel" in input)) return false
+    return typeof (input as { languageModel: unknown }).languageModel === "function"
+  }
+
+  function isLanguageModelFactory(input: unknown): input is (modelId: string) => LanguageModel {
+    return typeof input === "function"
+  }
+
   // ---------------------------------------------------------------------------
   // Bundled providers — same mapping as opencode
   // ---------------------------------------------------------------------------
-  const BUNDLED_PROVIDERS: Record<string, (options: any) => SDK> = {
-    "@ai-sdk/amazon-bedrock": createAmazonBedrock,
-    "@ai-sdk/anthropic": createAnthropic,
-    "@ai-sdk/azure": createAzure,
-    "@ai-sdk/google": createGoogleGenerativeAI,
-    "@ai-sdk/google-vertex": createVertex as any,
-    "@ai-sdk/openai": createOpenAI,
-    "@ai-sdk/openai-compatible": createOpenAICompatible,
-    "@openrouter/ai-sdk-provider": createOpenRouter as any,
-    "@ai-sdk/xai": createXai,
-    "@ai-sdk/mistral": createMistral,
-    "@ai-sdk/groq": createGroq,
-    "@ai-sdk/deepinfra": createDeepInfra,
-    "@ai-sdk/cerebras": createCerebras,
-    "@ai-sdk/cohere": createCohere,
-    "@ai-sdk/gateway": createGateway,
-    "@ai-sdk/togetherai": createTogetherAI,
-    "@ai-sdk/perplexity": createPerplexity,
-    "@ai-sdk/vercel": createVercel,
+  const BUNDLED_PROVIDERS: Record<string, ProviderFactory> = {
+    "@ai-sdk/amazon-bedrock": provider(createAmazonBedrock),
+    "@ai-sdk/anthropic": provider(createAnthropic),
+    "@ai-sdk/azure": provider(createAzure),
+    "@ai-sdk/google": provider(createGoogleGenerativeAI),
+    "@ai-sdk/google-vertex": provider(createVertex),
+    "@ai-sdk/openai": provider(createOpenAI),
+    "@ai-sdk/openai-compatible": provider(createOpenAICompatible),
+    "@openrouter/ai-sdk-provider": provider(createOpenRouter),
+    "@ai-sdk/xai": provider(createXai),
+    "@ai-sdk/mistral": provider(createMistral),
+    "@ai-sdk/groq": provider(createGroq),
+    "@ai-sdk/deepinfra": provider(createDeepInfra),
+    "@ai-sdk/cerebras": provider(createCerebras),
+    "@ai-sdk/cohere": provider(createCohere),
+    "@ai-sdk/gateway": provider(createGateway),
+    "@ai-sdk/togetherai": provider(createTogetherAI),
+    "@ai-sdk/perplexity": provider(createPerplexity),
+    "@ai-sdk/vercel": provider(createVercel),
   }
 
   // ---------------------------------------------------------------------------
@@ -148,9 +167,9 @@ export namespace AIProvider {
   // ---------------------------------------------------------------------------
   // models.dev dynamic loading (same as opencode)
   // ---------------------------------------------------------------------------
-  let modelsDevCache: Record<string, any> | null = null
+  let modelsDevCache: Record<string, unknown> | null = null
 
-  async function fetchModelsDev(): Promise<Record<string, any>> {
+  async function fetchModelsDev(): Promise<Record<string, unknown>> {
     if (modelsDevCache) return modelsDevCache
     const cachePath = path.join(Global.Path.cache, "models.json")
     const file = Bun.file(cachePath)
@@ -163,7 +182,7 @@ export namespace AIProvider {
       const resp = await fetch("https://models.dev/api.json", { signal: AbortSignal.timeout(5000) })
       if (resp.ok) {
         const data = await resp.json()
-        modelsDevCache = data as Record<string, any>
+        modelsDevCache = data as Record<string, unknown>
         await Bun.write(file, JSON.stringify(data)).catch(() => {})
         return modelsDevCache!
       }
@@ -206,7 +225,7 @@ export namespace AIProvider {
 
     // From models.dev
     for (const [providerID, provider] of Object.entries(modelsDev)) {
-      const p = provider as any
+      const p = provider as { name?: string; models?: Record<string, unknown> }
       if (!p.models || typeof p.models !== "object") continue
       const key = await getApiKey(providerID)
       result[providerID] = {
@@ -222,8 +241,10 @@ export namespace AIProvider {
         const key = await getApiKey(model.providerID)
         result[model.providerID] = { name: model.providerID, models: [], hasKey: !!key }
       }
-      if (!result[model.providerID].models.includes(model.id)) {
-        result[model.providerID].models.push(model.id)
+      const current = result[model.providerID]
+      if (!current) continue
+      if (!current.models.includes(model.id)) {
+        current.models.push(model.id)
       }
     }
 
@@ -233,7 +254,13 @@ export namespace AIProvider {
   // ---------------------------------------------------------------------------
   // Get a LanguageModel instance
   // ---------------------------------------------------------------------------
-  const sdkCache = new Map<string, SDK>()
+  const sdkCache = new Map<string, unknown>()
+  const V1_BASE_URL_PROVIDERS = new Set([
+    "openai",
+    "azure",
+    "openrouter",
+    "openai-compatible",
+  ])
 
   export async function getModel(modelID?: string): Promise<LanguageModel> {
     const id = modelID || (await getConfiguredModel()) || DEFAULT_MODEL
@@ -250,11 +277,16 @@ export namespace AIProvider {
     // Try models.dev (only if the user has a key for that provider)
     const modelsDev = await fetchModelsDev()
     for (const [providerID, provider] of Object.entries(modelsDev)) {
-      const p = provider as any
-      if (p.models?.[id]) {
+      const p = provider as {
+        api?: string
+        npm?: string
+        models?: Record<string, { provider?: { npm?: string } }>
+      }
+      const modelDef = p.models?.[id]
+      if (modelDef) {
         const apiKey = await getApiKey(providerID)
         if (!apiKey) continue
-        const npm = p.models[id].provider?.npm || p.npm || "@ai-sdk/openai-compatible"
+        const npm = modelDef.provider?.npm || p.npm || "@ai-sdk/openai-compatible"
         const base = await getBaseUrl(providerID)
         return getLanguageModel(providerID, id, apiKey, npm, base || p.api)
       }
@@ -262,7 +294,9 @@ export namespace AIProvider {
 
     // Try provider/model format
     if (id.includes("/")) {
-      const [providerID, ...rest] = id.split("/")
+      const [providerIDRaw, ...rest] = id.split("/")
+      const providerID = providerIDRaw || ""
+      if (!providerID) throw new Error(`Invalid model id: ${id}`)
       const mid = rest.join("/")
       const apiKey = await getApiKey(providerID)
       if (!apiKey) throw noKeyError(providerID)
@@ -298,9 +332,12 @@ export namespace AIProvider {
       if (!createFn) throw new Error(`No bundled provider for ${pkg}. Provider ${providerID} not supported.`)
       const opts: Record<string, unknown> = { apiKey, name: providerID }
       if (baseURL) {
-        // @ai-sdk/openai-compatible expects baseURL to include /v1
         const clean = baseURL.replace(/\/+$/, "")
-        opts.baseURL = clean.endsWith("/v1") ? clean : `${clean}/v1`
+        const shouldAppendV1 =
+          V1_BASE_URL_PROVIDERS.has(providerID) ||
+          pkg === "@ai-sdk/openai-compatible" ||
+          pkg === "@ai-sdk/openai"
+        opts.baseURL = shouldAppendV1 && !clean.endsWith("/v1") ? `${clean}/v1` : clean
       }
       if (providerID === "openrouter") {
         opts.headers = { "HTTP-Referer": "https://codeblog.ai/", "X-Title": "codeblog" }
@@ -312,10 +349,13 @@ export namespace AIProvider {
       sdkCache.set(cacheKey, sdk)
     }
 
-    if (typeof (sdk as any).languageModel === "function") {
-      return (sdk as any).languageModel(modelID)
+    if (hasLanguageModel(sdk)) {
+      return sdk.languageModel(modelID)
     }
-    return (sdk as any)(modelID)
+    if (isLanguageModelFactory(sdk)) {
+      return sdk(modelID)
+    }
+    throw new Error(`Provider ${providerID} returned an invalid SDK client`)
   }
 
   function noKeyError(providerID: string): Error {
@@ -358,15 +398,19 @@ export namespace AIProvider {
     if (!base) {
       // For known providers without custom base URL, use models.dev
       const modelsDev = await fetchModelsDev()
-      const p = modelsDev[providerID] as any
+      const p = modelsDev[providerID] as {
+        models?: Record<string, { name?: string; limit?: { context?: number; output?: number } }>
+      } | undefined
       if (p?.models) {
-        return Object.entries(p.models).map(([id, m]: [string, any]) => ({
-          id,
-          providerID,
-          name: m.name || id,
-          contextWindow: m.limit?.context || 0,
-          outputTokens: m.limit?.output || 0,
-        }))
+        return Object.entries(p.models).map(([id, m]) => {
+          return {
+            id,
+            providerID,
+            name: m.name || id,
+            contextWindow: m.limit?.context || 0,
+            outputTokens: m.limit?.output || 0,
+          }
+        })
       }
       return []
     }
@@ -378,15 +422,34 @@ export namespace AIProvider {
         signal: AbortSignal.timeout(10000),
       })
       if (!r.ok) return []
-      const json = await r.json() as any
+      const json = await r.json() as {
+        data?: Array<{
+          id?: string
+          name?: string
+          context_length?: number
+          context_window?: number
+          max_output_tokens?: number
+          max_tokens?: number
+        }>
+        models?: Array<{
+          id?: string
+          name?: string
+          context_length?: number
+          context_window?: number
+          max_output_tokens?: number
+          max_tokens?: number
+        }>
+      }
       const models = json.data || json.models || []
-      return models.map((m: any) => ({
-        id: m.id || m.name || "",
-        providerID,
-        name: m.id || m.name || "",
-        contextWindow: m.context_length || m.context_window || 0,
-        outputTokens: m.max_output_tokens || m.max_tokens || 0,
-      })).filter((m: ModelInfo) => m.id)
+      return models
+        .map((m) => ({
+          id: m.id || m.name || "",
+          providerID,
+          name: m.id || m.name || "",
+          contextWindow: m.context_length || m.context_window || 0,
+          outputTokens: m.max_output_tokens || m.max_tokens || 0,
+        }))
+        .filter((m) => m.id)
     } catch {
       return []
     }
@@ -408,7 +471,8 @@ export namespace AIProvider {
     }
     if (cfg.providers) {
       for (const providerID of Object.keys(cfg.providers)) {
-        if (cfg.providers[providerID].api_key) ids.add(providerID)
+        const item = cfg.providers[providerID]
+        if (item?.api_key) ids.add(providerID)
       }
     }
 

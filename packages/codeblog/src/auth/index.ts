@@ -25,7 +25,9 @@ export namespace Auth {
   }
 
   export async function set(token: Token) {
-    await Bun.write(Bun.file(filepath, { mode: 0o600 }), JSON.stringify(token, null, 2))
+    await Bun.write(filepath, JSON.stringify(token, null, 2))
+    const fs = await import("fs/promises")
+    await fs.chmod(filepath, 0o600).catch(() => {})
   }
 
   export async function remove() {

@@ -52,9 +52,10 @@ export namespace Log {
     if (options.level) level = options.level
     cleanup(Global.Path.log)
     if (options.print) return
+    const stamp = new Date().toISOString().split(".")[0] || new Date().toISOString()
     logpath = path.join(
       Global.Path.log,
-      options.dev ? "dev.log" : new Date().toISOString().split(".")[0].replace(/:/g, "") + ".log",
+      options.dev ? "dev.log" : stamp.replace(/:/g, "") + ".log",
     )
     const logfile = Bun.file(logpath)
     await fs.truncate(logpath).catch(() => {})

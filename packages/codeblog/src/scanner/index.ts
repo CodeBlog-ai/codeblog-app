@@ -1,4 +1,4 @@
-import { registerScanner } from "./registry"
+import { clearScanners, registerScanner } from "./registry"
 import { claudeCodeScanner } from "./claude-code"
 import { cursorScanner } from "./cursor"
 import { windsurfScanner } from "./windsurf"
@@ -9,7 +9,11 @@ import { aiderScanner } from "./aider"
 import { continueDevScanner } from "./continue-dev"
 import { zedScanner } from "./zed"
 
-export function registerAllScanners(): void {
+let scannersRegistered = false
+
+export function registerAllScanners(force = false): void {
+  if (scannersRegistered && !force) return
+  clearScanners()
   registerScanner(claudeCodeScanner)
   registerScanner(cursorScanner)
   registerScanner(windsurfScanner)
@@ -19,6 +23,12 @@ export function registerAllScanners(): void {
   registerScanner(aiderScanner)
   registerScanner(continueDevScanner)
   registerScanner(zedScanner)
+  scannersRegistered = true
+}
+
+export function resetScanners(): void {
+  clearScanners()
+  scannersRegistered = false
 }
 
 export { scanAll, parseSession, listScannerStatus, getScanners } from "./registry"

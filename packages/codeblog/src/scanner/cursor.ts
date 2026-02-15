@@ -1,6 +1,6 @@
 import * as path from "path"
 import * as fs from "fs"
-import { Database as BunDatabase } from "bun:sqlite"
+import { Database as BunDatabase, type SQLQueryBindings } from "bun:sqlite"
 import type { Scanner, Session, ParsedSession, ConversationTurn } from "./types"
 import { getHome, getPlatform } from "./platform"
 import { listFiles, listDirs, safeReadFile, safeReadJson, safeStats, extractProjectDescription } from "./fs-utils"
@@ -36,7 +36,7 @@ function withDb<T>(dbPath: string, fn: (db: BunDatabase) => T, fallback: T): T {
   }
 }
 
-function safeQueryDb<T>(db: BunDatabase, sql: string, params: unknown[] = []): T[] {
+function safeQueryDb<T>(db: BunDatabase, sql: string, params: SQLQueryBindings[] = []): T[] {
   try {
     return db.prepare(sql).all(...params) as T[]
   } catch (err) {
@@ -128,7 +128,8 @@ export const cursorScanner: Scanner = {
           const userQueries = content.match(/<user_query>\n?([\s\S]*?)\n?<\/user_query>/g) || []
           if (userQueries.length === 0) continue
           const firstQuery = content.match(/<user_query>\n?([\s\S]*?)\n?<\/user_query>/)
-          const preview = firstQuery ? firstQuery[1].trim().slice(0, 200) : content.slice(0, 200)
+          const queryText = firstQuery?.[1] || ""
+          const preview = queryText ? queryText.trim().slice(0, 200) : content.slice(0, 200)
           const id = path.basename(filePath, ".txt")
           seenIds.add(id)
           sessions.push({
@@ -185,8 +186,10 @@ export const cursorScanner: Scanner = {
                   [`bubbleId:${composerId}:${firstUserBubble.bubbleId}`],
                 )
                 if (bubbleRow.length > 0) {
+                  const firstBubble = bubbleRow[0]
+                  if (!firstBubble) continue
                   try {
-                    const bubble = JSON.parse(bubbleRow[0].value)
+                    const bubble = JSON.parse(firstBubble.value)
                     preview = (bubble.text || bubble.message || "").slice(0, 200)
                   } catch { /* */ }
                 }
@@ -223,7 +226,8 @@ export const cursorScanner: Scanner = {
         if (!block.trim()) continue
         if (maxTurns && turns.length >= maxTurns) break
         const queryMatch = block.match(/<user_query>\n?([\s\S]*?)\n?<\/user_query>/)
-        if (queryMatch) turns.push({ role: "human", content: queryMatch[1].trim() })
+        const query = queryMatch?.[1]
+        if (query) turns.push({ role: "human", content: query.trim() })
         const afterQuery = block.split(/<\/user_query>/)[1]
         if (afterQuery) {
           const aiContent = afterQuery.replace(/^\s*\n\s*A:\s*\n?/, "").trim()
@@ -268,8 +272,10 @@ function parseVscdbSession(virtualPath: string, maxTurns?: number): ParsedSessio
   return withDb(parsed.dbPath, (db) => {
     const metaRows = safeQueryDb<{ value: string }>(db, "SELECT value FROM cursorDiskKV WHERE key = ?", [`composerData:${parsed.composerId}`])
     if (metaRows.length === 0) return null
+    const firstMeta = metaRows[0]
+    if (!firstMeta) return null
     let composerData: CursorComposerData
-    try { composerData = JSON.parse(metaRows[0].value) } catch { return null }
+    try { composerData = JSON.parse(firstMeta.value) } catch { return null }
     const bubbleHeaders = composerData.fullConversationHeadersOnly || []
     if (bubbleHeaders.length === 0) return null
     const turns: ConversationTurn[] = []
@@ -277,8 +283,10 @@ function parseVscdbSession(virtualPath: string, maxTurns?: number): ParsedSessio
       if (maxTurns && turns.length >= maxTurns) break
       const bubbleRows = safeQueryDb<{ value: string }>(db, "SELECT value FROM cursorDiskKV WHERE key = ?", [`bubbleId:${parsed.composerId}:${header.bubbleId}`])
       if (bubbleRows.length === 0) continue
+      const firstBubble = bubbleRows[0]
+      if (!firstBubble) continue
       try {
-        const bubble = JSON.parse(bubbleRows[0].value)
+        const bubble = JSON.parse(firstBubble.value)
         const text = bubble.text || bubble.message || bubble.rawText || ""
         if (!text && header.type === 2) { turns.push({ role: "assistant", content: "(AI response)" }); continue }
         turns.push({ role: header.type === 1 ? "human" : "assistant", content: text || "(empty)" })

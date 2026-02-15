@@ -1,37 +1,37 @@
 import { describe, test, expect } from "bun:test"
-import { Lazy } from "../lazy"
+import { lazy } from "../lazy"
 
-describe("Lazy", () => {
-  test("initializes value on first call", () => {
+describe("lazy", () => {
+  test("initializes on first call", () => {
     let count = 0
-    const lazy = Lazy.create(() => {
+    const value = lazy(() => {
       count++
       return 42
     })
-    expect(lazy()).toBe(42)
+    expect(value()).toBe(42)
     expect(count).toBe(1)
   })
 
-  test("caches value on subsequent calls", () => {
+  test("caches after first call", () => {
     let count = 0
-    const lazy = Lazy.create(() => {
+    const value = lazy(() => {
       count++
       return "hello"
     })
-    lazy()
-    lazy()
-    lazy()
+    value()
+    value()
+    value()
     expect(count).toBe(1)
   })
 
-  test("reset clears cached value", () => {
+  test("reset clears cache", () => {
     let count = 0
-    const lazy = Lazy.create(() => {
+    const value = lazy(() => {
       count++
       return count
     })
-    expect(lazy()).toBe(1)
-    lazy.reset()
-    expect(lazy()).toBe(2)
+    expect(value()).toBe(1)
+    value.reset()
+    expect(value()).toBe(2)
   })
 })

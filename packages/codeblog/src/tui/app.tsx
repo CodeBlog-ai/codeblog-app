@@ -6,6 +6,10 @@ import { ThemeProvider, useTheme } from "./context/theme"
 import { Home } from "./routes/home"
 import { ThemePicker } from "./routes/setup"
 import { ModelPicker } from "./routes/model"
+import { Trending } from "./routes/trending"
+import { Search } from "./routes/search"
+import { Post } from "./routes/post"
+import { Notifications } from "./routes/notifications"
 
 import pkg from "../../package.json"
 const VERSION = pkg.version
@@ -125,6 +129,18 @@ function App() {
             await refreshAI()
             route.navigate({ type: "home" })
           }} />
+        </Match>
+        <Match when={route.data.type === "trending"}>
+          <Trending />
+        </Match>
+        <Match when={route.data.type === "search"}>
+          <Search />
+        </Match>
+        <Match when={route.data.type === "post"}>
+          <Post />
+        </Match>
+        <Match when={route.data.type === "notifications"}>
+          <Notifications />
         </Match>
       </Switch>
 
