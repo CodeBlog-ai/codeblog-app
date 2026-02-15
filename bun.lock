@@ -4,6 +4,9 @@
   "workspaces": {
     "": {
       "name": "codeblog-app",
+      "dependencies": {
+        "codeblog-mcp": "^2.1.2",
+      },
       "devDependencies": {
         "@tsconfig/bun": "1.0.9",
         "turbo": "2.5.6",
@@ -12,7 +15,7 @@
     },
     "packages/codeblog": {
       "name": "codeblog-app",
-      "version": "2.0.2",
+      "version": "2.1.2",
       "bin": {
         "codeblog": "./bin/codeblog",
       },
@@ -25,7 +28,7 @@
         "@opentui/core": "^0.1.79",
         "@opentui/solid": "^0.1.79",
         "ai": "^6.0.86",
-        "codeblog-mcp": "^1.7.0",
+        "codeblog-mcp": "^2.1.2",
         "drizzle-orm": "1.0.0-beta.12-a5629fb",
         "fuzzysort": "^3.1.0",
         "hono": "4.10.7",
@@ -44,11 +47,11 @@
         "typescript": "5.8.2",
       },
       "optionalDependencies": {
-        "codeblog-app-darwin-arm64": "2.0.2",
-        "codeblog-app-darwin-x64": "2.0.2",
-        "codeblog-app-linux-arm64": "2.0.2",
-        "codeblog-app-linux-x64": "2.0.2",
-        "codeblog-app-windows-x64": "2.0.2",
+        "codeblog-app-darwin-arm64": "2.1.0",
+        "codeblog-app-darwin-x64": "2.1.0",
+        "codeblog-app-linux-arm64": "2.1.0",
+        "codeblog-app-linux-x64": "2.1.0",
+        "codeblog-app-windows-x64": "2.1.0",
       },
     },
     "packages/util": {
@@ -425,7 +428,17 @@
 
     "codeblog-app": ["codeblog-app@workspace:packages/codeblog"],
 
-    "codeblog-mcp": ["codeblog-mcp@1.7.0", "", { "dependencies": { "@modelcontextprotocol/sdk": "^1.26.0", "better-sqlite3": "^12.6.2", "zod": "^3.24.0" }, "bin": { "codeblog-mcp": "dist/index.js" } }, "sha512-o3PZYm3NgTbFC/W4NdpsmitAOoL/oeNS1/eUN+2GrxAmj3XI+ecI5JRmmFuUoKY44Mmi2g1E2WRn2MQ3GaZZ7g=="],
+    "codeblog-app-darwin-arm64": ["codeblog-app-darwin-arm64@2.1.0", "", { "os": "darwin", "cpu": "arm64", "bin": { "codeblog": "bin/codeblog" } }, "sha512-5ELYmA5xmlIsuOe4MPoauKwuqnL/VTHQEoE2pN7fpY+7eVoIztIXQ01kUNfbAbkJoBf4MA6k4ScF/3RuMQ9SfA=="],
+
+    "codeblog-app-darwin-x64": ["codeblog-app-darwin-x64@2.1.0", "", { "os": "darwin", "cpu": "x64", "bin": { "codeblog": "bin/codeblog" } }, "sha512-y6oT9F1HBbATJN+fVKXmJwji4Me91pxvKIUdQtJkEXqYHpBCmT8/Qu/or2C3mHl41opj1xQIhilCSJGQmhpFkA=="],
+
+    "codeblog-app-linux-arm64": ["codeblog-app-linux-arm64@2.1.0", "", { "os": "linux", "cpu": "arm64", "bin": { "codeblog": "bin/codeblog" } }, "sha512-/B9+q0HUZFakefRrhYmidntv1BRFI4v52AvyYosyqiRgIX8kU6kOghJCUuJU5rC35rGEIAWl4nOW+LwG1zVe2w=="],
+
+    "codeblog-app-linux-x64": ["codeblog-app-linux-x64@2.1.0", "", { "os": "linux", "cpu": "x64", "bin": { "codeblog": "bin/codeblog" } }, "sha512-/dOqUUwAK5/ClAawK4SQg7ZdXj0Bpbb5zN64DGcU5N7OLe1qhDbhZRfaOyfXcr86ttU9dFzyUTRI2NNoxKLA4A=="],
+
+    "codeblog-app-windows-x64": ["codeblog-app-windows-x64@2.1.0", "", { "os": "win32", "cpu": "x64", "bin": { "codeblog": "bin/codeblog.exe" } }, "sha512-7VewkRI536qLXURLK62uYf1g9pIriouBw9JcA40nk1pI5HU7lRk+NMxJPN79VqFEfzwvIWAHP4hMIgBk4w9qgA=="],
+
+    "codeblog-mcp": ["codeblog-mcp@2.1.2", "", { "dependencies": { "@modelcontextprotocol/sdk": "^1.26.0", "better-sqlite3": "^12.6.2", "zod": "^3.24.0" }, "bin": { "codeblog-mcp": "dist/index.js" } }, "sha512-UPIUpYtlW5bmx8dn03OVf5LVmPUOcCtVISH+u5IOvH8Yk4H8BBTmdmjK3rgFopaatf41GRvsv+ELBTZRPn0Mlg=="],
 
     "commander": ["commander@11.1.0", "", {}, "sha512-yPVavfyCcRhmorC7rWlkHn15b4wDVgVmBA7kV4QVBsF7kv/9TKJAbAXVTxvTnwP8HHKjRCJDClKbciiYS7p0DQ=="],
 

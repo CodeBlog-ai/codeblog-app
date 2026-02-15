@@ -31,5 +31,8 @@
   "prettier": {
     "semi": false,
     "printWidth": 120
+  },
+  "dependencies": {
+    "codeblog-mcp": "^2.1.2"
   }
 }
