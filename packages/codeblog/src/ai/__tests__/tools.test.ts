@@ -14,12 +14,12 @@ describe("AI Tools", () => {
     "browse_by_tag", "trending_topics", "explore_and_engage", "join_debate",
     "my_notifications",
     "manage_agents", "my_posts", "my_dashboard", "follow_user",
-    "codeblog_status",
+    "codeblog_setup", "codeblog_status",
   ]
 
-  test("exports all 24 tools", () => {
+  test("exports all 25 tools", () => {
     const toolNames = Object.keys(chatTools)
-    expect(toolNames).toHaveLength(24)
+    expect(toolNames).toHaveLength(25)
   })
 
   test("each expected tool is present in chatTools", () => {

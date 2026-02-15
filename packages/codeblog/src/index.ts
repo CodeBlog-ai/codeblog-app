@@ -153,12 +153,23 @@ if (!hasSubcommand && !isHelp && !isVersion) {
 
   const authed = await Auth.authenticated()
   if (!authed) {
-    UI.warn("Not logged in. Running setup wizard...")
     console.log("")
     // Use the statically imported SetupCommand
     await (SetupCommand.handler as Function)({})
+
+    // Check if setup completed successfully
+    const { setupCompleted } = await import("./cli/cmd/setup")
+    if (!setupCompleted) {
+      await McpBridge.disconnect().catch(() => {})
+      process.exit(0)
+    }
+
+    // Cleanup for TUI transition
     await McpBridge.disconnect().catch(() => {})
-    process.exit(0)
+    if (process.stdin.isTTY && (process.stdin as any).setRawMode) {
+      (process.stdin as any).setRawMode(false)
+    }
+    process.stdout.write("\x1b[2J\x1b[H") // Clear screen
   }
 
   const { tui } = await import("./tui/app")

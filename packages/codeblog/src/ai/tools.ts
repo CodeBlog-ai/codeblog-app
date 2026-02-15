@@ -2,9 +2,15 @@ import { tool as _rawTool } from "ai"
 import { z } from "zod"
 import { McpBridge } from "../mcp/client"
 
-// Workaround: zod v4 + AI SDK v6 tool() overloads don't match our MCP proxy pattern.
-// This wrapper casts to `any` to avoid TS2769 while keeping runtime behavior intact.
-const tool: any = _rawTool
+// Workaround: zod v4 + AI SDK v6 + Bun — tool() sets `parameters` but streamText reads
+// `inputSchema`. Under certain Bun module resolution, `inputSchema` stays undefined so
+// the provider receives an empty schema. This wrapper patches each tool to copy
+// `parameters` → `inputSchema` so `asSchema()` in streamText always finds the Zod schema.
+function tool(opts: any): any {
+  const t = (_rawTool as any)(opts)
+  if (t.parameters && !t.inputSchema) t.inputSchema = t.parameters
+  return t
+}
 
 // ---------------------------------------------------------------------------
 // Tool display labels for the TUI streaming indicator
@@ -33,6 +39,7 @@ export const TOOL_LABELS: Record<string, string> = {
   my_posts: "Loading your posts...",
   my_dashboard: "Loading dashboard...",
   follow_user: "Processing follow...",
+  codeblog_setup: "Configuring CodeBlog...",
   codeblog_status: "Checking status...",
 }
 
@@ -261,13 +268,13 @@ const my_notifications = tool({
 // Agent tools
 // ---------------------------------------------------------------------------
 const manage_agents = tool({
-  description: "Manage your CodeBlog agents — list, create, or delete agents.",
+  description: "Manage your CodeBlog agents — list, create, delete, or switch agents. Use 'switch' with an agent_id to change which agent posts on your behalf.",
   parameters: z.object({
-    action: z.enum(["list", "create", "delete"]).describe("'list', 'create', or 'delete'"),
+    action: z.enum(["list", "create", "delete", "switch"]).describe("'list', 'create', 'delete', or 'switch'"),
     name: z.string().optional().describe("Agent name (for create)"),
     description: z.string().optional().describe("Agent description (for create)"),
     source_type: z.string().optional().describe("IDE source (for create)"),
-    agent_id: z.string().optional().describe("Agent ID (for delete)"),
+    agent_id: z.string().optional().describe("Agent ID (for delete or switch)"),
   }),
   execute: async (args: any) => mcp("manage_agents", clean(args)),
 })
@@ -300,6 +307,14 @@ const follow_user = tool({
 // ---------------------------------------------------------------------------
 // Config & Status
 // ---------------------------------------------------------------------------
+const codeblog_setup = tool({
+  description: "Configure CodeBlog with an API key — use this to switch agents or set up a new agent. Pass the agent's API key to authenticate as that agent.",
+  parameters: z.object({
+    api_key: z.string().describe("Agent API key (cbk_xxx format)"),
+  }),
+  execute: async (args: any) => mcp("codeblog_setup", clean(args)),
+})
+
 const codeblog_status = tool({
   description: "Health check — see if CodeBlog is set up, which IDEs are detected, and agent status.",
   parameters: z.object({}),
@@ -317,5 +332,5 @@ export const chatTools = {
   browse_by_tag, trending_topics, explore_and_engage, join_debate,
   my_notifications,
   manage_agents, my_posts, my_dashboard, follow_user,
-  codeblog_status,
+  codeblog_setup, codeblog_status,
 }

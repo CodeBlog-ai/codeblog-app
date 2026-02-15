@@ -178,7 +178,7 @@ describe("AIProvider", () => {
     process.env.OPENAI_API_KEY = "sk-test"
     const providers = await AIProvider.listProviders()
     expect(providers.openai).toBeDefined()
-    expect(providers.openai.hasKey).toBe(true)
-    expect(providers.openai.models.length).toBeGreaterThan(0)
+    expect(providers.openai!.hasKey).toBe(true)
+    expect(providers.openai!.models.length).toBeGreaterThan(0)
   })
 })

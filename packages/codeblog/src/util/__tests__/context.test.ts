@@ -5,27 +5,27 @@ describe("Context", () => {
   test("create and provide context", () => {
     const ctx = Context.create<string>("test")
 
-    Context.provide(ctx, "hello", () => {
-      expect(Context.use(ctx)).toBe("hello")
+    ctx.provide("hello", () => {
+      expect(ctx.use()).toBe("hello")
     })
   })
 
-  test("use returns undefined outside provider", () => {
+  test("throws outside provider", () => {
     const ctx = Context.create<number>("num")
-    expect(Context.use(ctx)).toBeUndefined()
+    expect(() => ctx.use()).toThrow(Context.NotFound)
   })
 
   test("nested contexts work correctly", () => {
     const ctx = Context.create<string>("nested")
 
-    Context.provide(ctx, "outer", () => {
-      expect(Context.use(ctx)).toBe("outer")
+    ctx.provide("outer", () => {
+      expect(ctx.use()).toBe("outer")
 
-      Context.provide(ctx, "inner", () => {
-        expect(Context.use(ctx)).toBe("inner")
+      ctx.provide("inner", () => {
+        expect(ctx.use()).toBe("inner")
       })
 
-      expect(Context.use(ctx)).toBe("outer")
+      expect(ctx.use()).toBe("outer")
     })
   })
 })

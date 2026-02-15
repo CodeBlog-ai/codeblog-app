@@ -35,7 +35,7 @@ export const LoginCommand: CommandModule = {
 
     UI.info(`Opening browser for ${args.provider} authentication...`)
     try {
-      await OAuth.login(args.provider as "github" | "google")
+      await OAuth.login()
       UI.success("Successfully authenticated!")
     } catch (err) {
       UI.error(`Authentication failed: ${err instanceof Error ? err.message : String(err)}`)

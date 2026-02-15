@@ -3,7 +3,7 @@ import { useKeyboard, usePaste } from "@opentui/solid"
 import { useRoute } from "../context/route"
 import { useExit } from "../context/exit"
 import { useTheme } from "../context/theme"
-import { createCommands, LOGO, TIPS } from "../commands"
+import { createCommands, LOGO, TIPS, TIPS_NO_AI } from "../commands"
 import { TOOL_LABELS } from "../../ai/tools"
 import { mask, saveProvider } from "../../ai/configure"
 import { ChatHistory } from "../../storage/chat"
@@ -82,6 +82,7 @@ export function Home(props: {
   })
   const shimmerText = () => SHIMMER_WORDS[shimmerIdx()] + ".".repeat(shimmerDots())
 
+  const tipPool = () => props.hasAI ? TIPS : TIPS_NO_AI
   const tipIdx = Math.floor(Math.random() * TIPS.length)
   const [aiMode, setAiMode] = createSignal<"" | "url" | "key" | "testing">("")
   const [aiUrl, setAiUrl] = createSignal("")
@@ -112,6 +113,7 @@ export function Home(props: {
     send,
     resume: resumeSession,
     listSessions: () => { try { return ChatHistory.list(10) } catch { return [] } },
+    hasAI: props.hasAI,
     colors: theme.colors,
   })
 
@@ -156,7 +158,7 @@ export function Home(props: {
       const { AIProvider } = await import("../../ai/provider")
       const cfg = await Config.load()
       const mid = cfg.model || AIProvider.DEFAULT_MODEL
-      const allMsgs = [...prev, userMsg].map((m) => ({ role: m.role as "user" | "assistant", content: m.content }))
+      const allMsgs = [...prev, userMsg].filter((m) => m.role !== "tool").map((m) => ({ role: m.role as "user" | "assistant", content: m.content }))
       let full = ""
       abortCtrl = new AbortController()
       await AIChat.stream(allMsgs, {
@@ -182,6 +184,7 @@ export function Home(props: {
             setMessages((p) => [...p, { role: "assistant", content: full.trim() }])
           }
           setStreamText(""); setStreaming(false)
+          saveChat()
         },
         onError: (err) => {
           setMessages((p) => {
@@ -244,6 +247,12 @@ export function Home(props: {
       const items = filtered()
       const sel = items[selectedIdx()]
       if (sel) {
+        if (sel.needsAI && !props.hasAI) {
+          showMsg(`${sel.name} requires AI. Type /ai to configure.`, theme.colors.warning)
+          setInput("")
+          setSelectedIdx(0)
+          return
+        }
         setInput("")
         setSelectedIdx(0)
         sel.action(sel.name.split(/\s+/))
@@ -261,6 +270,10 @@ export function Home(props: {
       const cmd = parts[0]
       const match = commands.find((c) => c.name === cmd)
       if (match) {
+        if (match.needsAI && !props.hasAI) {
+          showMsg(`${cmd} requires AI. Type /ai to configure.`, theme.colors.warning)
+          return
+        }
         match.action(parts)
         return
       }
@@ -319,6 +332,7 @@ export function Home(props: {
       const cur = streamText()
       if (cur.trim()) setMessages((p) => [...p, { role: "assistant", content: cur.trim() + "\n\n(interrupted)" }])
       setStreamText(""); setStreaming(false)
+      saveChat()
       evt.preventDefault(); return
     }
     if (evt.name === "escape" && chatting() && !streaming()) { clearChat(); evt.preventDefault(); return }
@@ -452,16 +466,20 @@ export function Home(props: {
             <Show when={showAutocomplete()}>
               <box flexDirection="column" paddingBottom={1}>
                 <For each={filtered()}>
-                  {(cmd, i) => (
-                    <box flexDirection="row" backgroundColor={i() === selectedIdx() ? theme.colors.primary : undefined}>
-                      <text fg={i() === selectedIdx() ? "#ffffff" : theme.colors.primary}>
-                        {"  " + cmd.name.padEnd(18)}
-                      </text>
-                      <text fg={i() === selectedIdx() ? "#ffffff" : theme.colors.textMuted}>
-                        {cmd.description}
-                      </text>
-                    </box>
-                  )}
+                  {(cmd, i) => {
+                    const disabled = () => cmd.needsAI && !props.hasAI
+                    const selected = () => i() === selectedIdx()
+                    return (
+                      <box flexDirection="row" backgroundColor={selected() && !disabled() ? theme.colors.primary : undefined}>
+                        <text fg={selected() && !disabled() ? "#ffffff" : (disabled() ? theme.colors.textMuted : theme.colors.primary)}>
+                          {"  " + cmd.name.padEnd(18)}
+                        </text>
+                        <text fg={selected() && !disabled() ? "#ffffff" : theme.colors.textMuted}>
+                          {disabled() ? cmd.description + " [needs /ai]" : cmd.description}
+                        </text>
+                      </box>
+                    )
+                  }}
                 </For>
               </box>
             </Show>
@@ -470,10 +488,10 @@ export function Home(props: {
               <text fg={messageColor()} flexShrink={0}>{message()}</text>
             </Show>
             {/* Tip */}
-            <Show when={!showAutocomplete() && !message() && !chatting() && props.loggedIn && props.hasAI}>
+            <Show when={!showAutocomplete() && !message() && !chatting() && props.loggedIn}>
               <box flexDirection="row" paddingBottom={1}>
                 <text fg={theme.colors.warning} flexShrink={0}>● Tip </text>
-                <text fg={theme.colors.textMuted}>{TIPS[tipIdx]}</text>
+                <text fg={theme.colors.textMuted}>{tipPool()[tipIdx % tipPool().length]}</text>
               </box>
             </Show>
             {/* Input line */}

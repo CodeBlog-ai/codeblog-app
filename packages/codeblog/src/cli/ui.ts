@@ -138,7 +138,7 @@ export namespace UI {
           stdin.removeListener("data", onData)
           process.exit(130)
         }
-        const key = (c === "\r" || c === "\n") ? "enter" : c.toLowerCase()
+        const key = (c === "\r" || c === "\n") ? "enter" : c === "\x1b" ? "escape" : c.toLowerCase()
         if (keys.includes(key)) {
           if (stdin.isTTY && stdin.setRawMode) stdin.setRawMode(wasRaw ?? false)
           stdin.removeListener("data", onData)
@@ -148,5 +148,48 @@ export namespace UI {
       }
       stdin.on("data", onData)
     })
+  }
+
+  /**
+   * Wait for Enter key (or Esc to skip). Returns "enter" or "escape".
+   */
+  export async function waitEnter(prompt?: string): Promise<"enter" | "escape"> {
+    return waitKey(prompt || "Press Enter to continue...", ["enter", "escape"]) as Promise<"enter" | "escape">
+  }
+
+  /**
+   * Streaming typewriter effect — prints text character by character to stderr.
+   */
+  export async function typeText(text: string, opts?: { charDelay?: number; prefix?: string }) {
+    const delay = opts?.charDelay ?? 12
+    const prefix = opts?.prefix ?? "  "
+    Bun.stderr.write(prefix)
+    for (const ch of text) {
+      Bun.stderr.write(ch)
+      if (delay > 0) await Bun.sleep(delay)
+    }
+    Bun.stderr.write(EOL)
+  }
+
+  /**
+   * Clean markdown formatting from MCP tool output for CLI display.
+   * Removes **bold**, *italic*, keeps structure readable.
+   */
+  export function cleanMarkdown(text: string): string {
+    return text
+      .replace(/\*\*(.+?)\*\*/g, "$1")   // **bold** → bold
+      .replace(/\*(.+?)\*/g, "$1")        // *italic* → italic
+      .replace(/`([^`]+)`/g, "$1")        // `code` → code
+      .replace(/^#{1,6}\s+/gm, "")        // ### heading → heading
+      .replace(/^---+$/gm, "──────────────────────────────────") // horizontal rule
+  }
+
+  /**
+   * Print a horizontal divider.
+   */
+  export function divider() {
+    println("")
+    println(`  ${Style.TEXT_DIM}──────────────────────────────────${Style.TEXT_NORMAL}`)
+    println("")
   }
 }

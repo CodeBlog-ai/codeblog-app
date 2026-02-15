@@ -105,7 +105,7 @@ function App() {
             onLogin={async () => {
               try {
                 const { OAuth } = await import("../auth/oauth")
-                await OAuth.login("github")
+                await OAuth.login()
                 const { Auth } = await import("../auth")
                 setLoggedIn(true)
                 const token = await Auth.get()

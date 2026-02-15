@@ -21,7 +21,7 @@ describe("array utils", () => {
     ]
     const result = unique(items, (i) => i.id)
     expect(result.length).toBe(2)
-    expect(result[0].name).toBe("a")
+    expect(result[0]!.name).toBe("a")
   })
 
   test("groupBy groups items", () => {
@@ -31,8 +31,8 @@ describe("array utils", () => {
       { type: "a", value: 3 },
     ]
     const result = groupBy(items, (i) => i.type)
-    expect(result.a.length).toBe(2)
-    expect(result.b.length).toBe(1)
+    expect(result.a!.length).toBe(2)
+    expect(result.b!.length).toBe(1)
   })
 
   test("sortBy sorts ascending by default", () => {

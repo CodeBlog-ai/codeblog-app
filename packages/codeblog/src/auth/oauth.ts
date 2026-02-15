@@ -7,7 +7,7 @@ import { Log } from "../util/log"
 const log = Log.create({ service: "oauth" })
 
 export namespace OAuth {
-  export async function login(provider: "github" | "google" = "github") {
+  export async function login(options?: { onUrl?: (url: string) => void }) {
     const open = (await import("open")).default
     const base = await Config.url()
 
@@ -81,6 +81,7 @@ p{font-size:15px;color:#6a737c;line-height:1.5}
 
       const authUrl = `${base}/auth/cli?port=${port}`
       log.info("opening browser", { url: authUrl })
+      if (options?.onUrl) options.onUrl(authUrl)
       open(authUrl)
 
       // Timeout after 5 minutes
