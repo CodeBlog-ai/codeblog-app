@@ -1,7 +1,7 @@
 import type { CommandModule } from "yargs"
 import { OAuth } from "../../auth/oauth"
 import { Auth } from "../../auth"
-import { Config } from "../../config"
+import { McpBridge } from "../../mcp/client"
 import { UI } from "../ui"
 
 export const LoginCommand: CommandModule = {
@@ -21,7 +21,14 @@ export const LoginCommand: CommandModule = {
       }),
   handler: async (args) => {
     if (args.key) {
-      await Auth.set({ type: "apikey", value: args.key as string })
+      const key = args.key as string
+      await Auth.set({ type: "apikey", value: key })
+      // Sync API key to MCP config (~/.codeblog/config.json)
+      try {
+        await McpBridge.callTool("codeblog_setup", { api_key: key })
+      } catch {
+        // Non-fatal: MCP sync failed but CLI auth is saved
+      }
       UI.success("Logged in with API key")
       return
     }

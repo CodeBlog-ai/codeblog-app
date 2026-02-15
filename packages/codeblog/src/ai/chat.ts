@@ -1,4 +1,4 @@
-import { streamText, type CoreMessage, type CoreToolMessage, type CoreAssistantMessage } from "ai"
+import { streamText, type ModelMessage } from "ai"
 import { AIProvider } from "./provider"
 import { chatTools } from "./tools"
 import { Log } from "../util/log"
@@ -40,7 +40,7 @@ export namespace AIChat {
     log.info("streaming", { model: modelID || AIProvider.DEFAULT_MODEL, messages: messages.length })
 
     // Build history: only user/assistant text (tool context is added per-step below)
-    const history: CoreMessage[] = messages
+    const history: ModelMessage[] = messages
       .filter((m) => m.role === "user" || m.role === "assistant")
       .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }))
     let full = ""
@@ -52,36 +52,35 @@ export namespace AIChat {
         model,
         system: SYSTEM_PROMPT,
         messages: history,
-        // Note: tools disabled for openai-compatible providers that don't support function calling
-        // tools: chatTools,
+        tools: chatTools,
         maxSteps: 1,
         abortSignal: signal,
-      })
+      } as any)
 
       const calls: Array<{ id: string; name: string; input: unknown; output: unknown }> = []
 
       try {
         log.info("starting fullStream iteration")
-        for await (const part of result.fullStream) {
+        for await (const part of (result as any).fullStream) {
           log.info("stream part", { type: part.type })
           if (signal?.aborted) break
           switch (part.type) {
             case "text-delta": {
-              const delta = (part as any).text ?? (part as any).textDelta ?? ""
+              const delta = part.text ?? part.textDelta ?? ""
               if (delta) { full += delta; callbacks.onToken?.(delta) }
               break
             }
             case "tool-call": {
-              const input = (part as any).input ?? (part as any).args
+              const input = part.input ?? part.args
               callbacks.onToolCall?.(part.toolName, input)
               calls.push({ id: part.toolCallId, name: part.toolName, input, output: undefined })
               break
             }
             case "tool-result": {
-              const output = (part as any).output ?? (part as any).result ?? {}
-              const name = (part as any).toolName
+              const output = part.output ?? part.result ?? {}
+              const name = part.toolName
               callbacks.onToolResult?.(name, output)
-              const match = calls.find((c) => c.name === name && c.output === undefined)
+              const match = calls.find((c: any) => c.id === part.toolCallId && c.output === undefined)
               if (match) match.output = output
               break
             }
@@ -103,9 +102,7 @@ export namespace AIChat {
 
       if (calls.length === 0) break
 
-      // AI SDK v6 ModelMessage format:
-      // AssistantModelMessage with ToolCallPart uses "input"
-      // ToolModelMessage with ToolResultPart uses "output: { type: 'json', value }"
+      // AI SDK v6 ModelMessage format
       history.push({
         role: "assistant",
         content: calls.map((c) => ({
@@ -114,7 +111,7 @@ export namespace AIChat {
           toolName: c.name,
           input: c.input,
         })),
-      } as CoreMessage)
+      } as ModelMessage)
 
       history.push({
         role: "tool",
@@ -124,7 +121,7 @@ export namespace AIChat {
           toolName: c.name,
           output: { type: "json" as const, value: c.output ?? {} },
         })),
-      } as CoreMessage)
+      } as ModelMessage)
 
       log.info("tool step done", { step, tools: calls.map((c) => c.name) })
     }

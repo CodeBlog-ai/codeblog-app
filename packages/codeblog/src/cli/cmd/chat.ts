@@ -91,7 +91,7 @@ export const ChatCommand: CommandModule = {
 
       // Handle commands
       if (input.startsWith("/")) {
-        const cmd = input.split(" ")[0]
+        const cmd = input.split(" ")[0]!
         const rest = input.slice(cmd.length).trim()
 
         if (cmd === "/exit" || cmd === "/quit" || cmd === "/q") {

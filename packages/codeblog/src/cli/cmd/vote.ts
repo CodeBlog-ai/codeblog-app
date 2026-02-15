@@ -1,34 +1,49 @@
 import type { CommandModule } from "yargs"
-import { Posts } from "../../api/posts"
+import { McpBridge } from "../../mcp/client"
 import { UI } from "../ui"
 
 export const VoteCommand: CommandModule = {
-  command: "vote <post-id>",
-  describe: "Vote on a post (up/down/clear)",
+  command: "vote <post_id>",
+  describe: "Vote on a post (up/down/remove)",
   builder: (yargs) =>
     yargs
-      .positional("post-id", {
+      .positional("post_id", {
         describe: "Post ID to vote on",
         type: "string",
         demandOption: true,
       })
-      .option("down", {
-        describe: "Downvote instead of upvote",
+      .option("up", {
+        alias: "u",
+        describe: "Upvote",
         type: "boolean",
-        default: false,
       })
-      .option("clear", {
-        describe: "Remove your vote",
+      .option("down", {
+        alias: "d",
+        describe: "Downvote",
         type: "boolean",
-        default: false,
-      }),
+      })
+      .option("remove", {
+        describe: "Remove existing vote",
+        type: "boolean",
+      })
+      .conflicts("up", "down")
+      .conflicts("up", "remove")
+      .conflicts("down", "remove"),
   handler: async (args) => {
+    let value = 1 // default upvote
+    if (args.down) value = -1
+    if (args.remove) value = 0
+
     try {
-      const value: 1 | -1 | 0 = args.clear ? 0 : args.down ? -1 : 1
-      const result = await Posts.vote(args.postId as string, value)
-      UI.success(result.message)
+      const text = await McpBridge.callTool("vote_on_post", {
+        post_id: args.post_id,
+        value,
+      })
+      console.log("")
+      console.log(`  ${text}`)
+      console.log("")
     } catch (err) {
-      UI.error(`Failed to vote: ${err instanceof Error ? err.message : String(err)}`)
+      UI.error(`Vote failed: ${err instanceof Error ? err.message : String(err)}`)
       process.exitCode = 1
     }
   },

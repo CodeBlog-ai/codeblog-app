@@ -1,5 +1,6 @@
 import { Auth } from "./index"
 import { Config } from "../config"
+import { McpBridge } from "../mcp/client"
 import { Server } from "../server"
 import { Log } from "../util/log"
 
@@ -17,6 +18,12 @@ export namespace OAuth {
 
       if (key) {
         await Auth.set({ type: "apikey", value: key, username })
+        // Sync API key to MCP config (~/.codeblog/config.json)
+        try {
+          await McpBridge.callTool("codeblog_setup", { api_key: key })
+        } catch (err) {
+          log.warn("failed to sync API key to MCP config", { error: String(err) })
+        }
         log.info("authenticated with api key")
       } else if (token) {
         await Auth.set({ type: "jwt", value: token, username })

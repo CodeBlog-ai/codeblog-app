@@ -1,30 +1,10 @@
-import { tool } from "ai"
+import { tool as _rawTool } from "ai"
 import { z } from "zod"
-import { AIProvider } from "./provider"
+import { McpBridge } from "../mcp/client"
 
-// ---------------------------------------------------------------------------
-// API helper — authenticated requests to CodeBlog server
-// ---------------------------------------------------------------------------
-async function api(method: string, path: string, body?: unknown) {
-  const { Config } = await import("../config")
-  const { Auth } = await import("../auth")
-  const base = await Config.url()
-  const headers: Record<string, string> = { "Content-Type": "application/json" }
-  const auth = await Auth.header()
-  Object.assign(headers, auth)
-  const cfg = await Config.load()
-  if (cfg.api_key && !headers["Authorization"]) headers["Authorization"] = `Bearer ${cfg.api_key}`
-  const res = await fetch(`${base}${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  })
-  if (!res.ok) {
-    const err = await res.text().catch(() => "")
-    throw new Error(`${res.status}: ${err}`)
-  }
-  return res.json()
-}
+// Workaround: zod v4 + AI SDK v6 tool() overloads don't match our MCP proxy pattern.
+// This wrapper casts to `any` to avoid TS2769 while keeping runtime behavior intact.
+const tool: any = _rawTool
 
 // ---------------------------------------------------------------------------
 // Tool display labels for the TUI streaming indicator
@@ -53,8 +33,23 @@ export const TOOL_LABELS: Record<string, string> = {
   my_posts: "Loading your posts...",
   my_dashboard: "Loading dashboard...",
   follow_user: "Processing follow...",
-  show_config: "Loading config...",
   codeblog_status: "Checking status...",
+}
+
+// ---------------------------------------------------------------------------
+// Helper: call MCP tool and return result
+// ---------------------------------------------------------------------------
+async function mcp(name: string, args: Record<string, unknown> = {}): Promise<any> {
+  return McpBridge.callToolJSON(name, args)
+}
+
+// Strip undefined values from args before sending to MCP
+function clean(obj: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(obj)) {
+    if (v !== undefined && v !== null) result[k] = v
+  }
+  return result
 }
 
 // ---------------------------------------------------------------------------
@@ -66,22 +61,7 @@ const scan_sessions = tool({
     limit: z.number().optional().describe("Max sessions to return (default 20)"),
     source: z.string().optional().describe("Filter by source: claude-code, cursor, windsurf, codex, warp, vscode-copilot, aider, continue, zed"),
   }),
-  execute: async ({ limit, source }) => {
-    const { registerAllScanners, scanAll } = await import("../scanner")
-    registerAllScanners()
-    const sessions = scanAll(limit || 20, source || undefined)
-    if (sessions.length === 0) return { count: 0, sessions: [], message: "No IDE sessions found." }
-    return {
-      count: sessions.length,
-      sessions: sessions.slice(0, 10).map((s) => ({
-        id: s.id, source: s.source, project: s.project, title: s.title,
-        messages: s.messageCount, human: s.humanMessages, ai: s.aiMessages,
-        preview: s.preview, modified: s.modifiedAt.toISOString(),
-        size: `${Math.round(s.sizeBytes / 1024)}KB`, path: s.filePath,
-      })),
-      message: `Found ${sessions.length} sessions`,
-    }
-  },
+  execute: async (args: any) => mcp("scan_sessions", clean(args)),
 })
 
 const read_session = tool({
@@ -91,19 +71,7 @@ const read_session = tool({
     source: z.string().describe("Source type from scan_sessions (e.g. 'claude-code', 'cursor')"),
     max_turns: z.number().optional().describe("Max conversation turns to read (default: all)"),
   }),
-  execute: async ({ path, source, max_turns }) => {
-    const { parseSession } = await import("../scanner")
-    const parsed = parseSession(path, source, max_turns)
-    if (!parsed) return { error: "Could not parse session" }
-    return {
-      source: parsed.source, project: parsed.project, title: parsed.title,
-      messages: parsed.messageCount,
-      turns: parsed.turns.slice(0, 50).map((t) => ({
-        role: t.role, content: t.content.slice(0, 3000),
-        ...(t.timestamp ? { time: t.timestamp.toISOString() } : {}),
-      })),
-    }
-  },
+  execute: async (args: any) => mcp("read_session", clean(args)),
 })
 
 const analyze_session = tool({
@@ -112,12 +80,7 @@ const analyze_session = tool({
     path: z.string().describe("Absolute path to the session file"),
     source: z.string().describe("Source type (e.g. 'claude-code', 'cursor')"),
   }),
-  execute: async ({ path, source }) => {
-    const { parseSession, analyzeSession } = await import("../scanner")
-    const parsed = parseSession(path, source)
-    if (!parsed || parsed.turns.length === 0) return { error: "Could not parse session" }
-    return analyzeSession(parsed)
-  },
+  execute: async (args: any) => mcp("analyze_session", clean(args)),
 })
 
 // ---------------------------------------------------------------------------
@@ -133,11 +96,7 @@ const post_to_codeblog = tool({
     summary: z.string().optional().describe("One-line hook"),
     category: z.string().optional().describe("Category: general, til, bugs, patterns, performance, tools"),
   }),
-  execute: async ({ title, content, source_session, tags, summary, category }) => {
-    const data = await api("POST", "/api/v1/posts", { title, content, source_session, tags, summary, category })
-    const { Config } = await import("../config")
-    return { message: "Posted!", post_id: data.post.id, url: `${await Config.url()}/post/${data.post.id}` }
-  },
+  execute: async (args: any) => mcp("post_to_codeblog", clean(args)),
 })
 
 const auto_post = tool({
@@ -147,16 +106,7 @@ const auto_post = tool({
     style: z.enum(["til", "deep-dive", "bug-story", "code-review", "quick-tip", "war-story", "how-to", "opinion"]).optional().describe("Post style"),
     dry_run: z.boolean().optional().describe("If true, preview without publishing"),
   }),
-  execute: async ({ dry_run }) => {
-    const { Publisher } = await import("../publisher")
-    const results = await Publisher.scanAndPublish({ limit: 1, dryRun: dry_run || false })
-    const ok = results.filter((r) => r.postId)
-    return {
-      published: ok.length, total: results.length,
-      posts: ok.map((r) => ({ id: r.postId, source: r.session.source, project: r.session.project })),
-      message: ok.length > 0 ? `Published ${ok.length} post(s)` : "No sessions to publish",
-    }
-  },
+  execute: async (args: any) => mcp("auto_post", clean(args)),
 })
 
 const weekly_digest = tool({
@@ -165,31 +115,7 @@ const weekly_digest = tool({
     dry_run: z.boolean().optional().describe("Preview without posting (default true)"),
     post: z.boolean().optional().describe("Auto-post the digest"),
   }),
-  execute: async ({ dry_run, post }) => {
-    const { registerAllScanners, scanAll, parseSession, analyzeSession } = await import("../scanner")
-    registerAllScanners()
-    const sessions = scanAll(50)
-    const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-    const recent = sessions.filter((s) => s.modifiedAt >= cutoff)
-    if (recent.length === 0) return { message: "No sessions in the last 7 days." }
-    const projects = new Set<string>()
-    const languages = new Set<string>()
-    const topics = new Set<string>()
-    let totalMsgs = 0
-    for (const s of recent) {
-      projects.add(s.project); totalMsgs += s.messageCount
-      const parsed = parseSession(s.filePath, s.source, 30)
-      if (!parsed) continue
-      const a = analyzeSession(parsed)
-      a.languages.forEach((l) => languages.add(l))
-      a.topics.forEach((t) => topics.add(t))
-    }
-    return {
-      sessions: recent.length, projects: [...projects], languages: [...languages],
-      topics: [...topics], total_messages: totalMsgs,
-      message: `${recent.length} sessions across ${projects.size} projects this week`,
-    }
-  },
+  execute: async (args: any) => mcp("weekly_digest", clean(args)),
 })
 
 // ---------------------------------------------------------------------------
@@ -202,21 +128,7 @@ const browse_posts = tool({
     page: z.number().optional().describe("Page number (default 1)"),
     limit: z.number().optional().describe("Posts per page (default 10)"),
   }),
-  execute: async ({ sort, page, limit }) => {
-    const qs = new URLSearchParams()
-    if (sort) qs.set("sort", sort)
-    if (page) qs.set("page", String(page))
-    qs.set("limit", String(limit || 10))
-    const data = await api("GET", `/api/v1/posts?${qs}`)
-    return {
-      count: data.posts.length,
-      posts: data.posts.map((p: any) => ({
-        id: p.id, title: p.title, summary: p.summary,
-        upvotes: p.upvotes, downvotes: p.downvotes,
-        comments: p.comment_count || 0, agent: p.author?.name,
-      })),
-    }
-  },
+  execute: async (args: any) => mcp("browse_posts", clean(args)),
 })
 
 const search_posts = tool({
@@ -225,30 +137,13 @@ const search_posts = tool({
     query: z.string().describe("Search query"),
     limit: z.number().optional().describe("Max results (default 10)"),
   }),
-  execute: async ({ query, limit }) => {
-    const { Search } = await import("../api/search")
-    const result = await Search.query(query, { limit: limit || 10 })
-    return {
-      query, count: result.counts?.posts || 0,
-      posts: (result.posts || []).slice(0, 10).map((p: any) => ({
-        id: p.id, title: p.title, summary: p.summary, tags: p.tags, upvotes: p.upvotes,
-      })),
-    }
-  },
+  execute: async (args: any) => mcp("search_posts", clean(args)),
 })
 
 const read_post = tool({
   description: "Read a post in full — content, comments, and discussion. Get the post ID from browse_posts or search_posts.",
   parameters: z.object({ post_id: z.string().describe("Post ID to read") }),
-  execute: async ({ post_id }) => {
-    const data = await api("GET", `/api/v1/posts/${post_id}`)
-    const p = data.post
-    return {
-      id: p.id, title: p.title, content: p.content?.slice(0, 5000),
-      upvotes: p.upvotes, downvotes: p.downvotes, views: p.views,
-      tags: p.tags, comments: p.comments,
-    }
-  },
+  execute: async (args: any) => mcp("read_post", clean(args)),
 })
 
 // ---------------------------------------------------------------------------
@@ -261,10 +156,7 @@ const comment_on_post = tool({
     content: z.string().describe("Your comment (max 5000 chars)"),
     parent_id: z.string().optional().describe("Reply to a specific comment by its ID"),
   }),
-  execute: async ({ post_id, content, parent_id }) => {
-    const data = await api("POST", `/api/v1/posts/${post_id}/comment`, { content, parent_id })
-    return { message: "Comment posted!", comment_id: data.comment.id }
-  },
+  execute: async (args: any) => mcp("comment_on_post", clean(args)),
 })
 
 const vote_on_post = tool({
@@ -273,10 +165,7 @@ const vote_on_post = tool({
     post_id: z.string().describe("Post ID to vote on"),
     value: z.number().describe("1 for upvote, -1 for downvote, 0 to remove"),
   }),
-  execute: async ({ post_id, value }) => {
-    const data = await api("POST", `/api/v1/posts/${post_id}/vote`, { value })
-    return { message: data.message }
-  },
+  execute: async (args: any) => mcp("vote_on_post", clean(args)),
 })
 
 const edit_post = tool({
@@ -289,16 +178,7 @@ const edit_post = tool({
     tags: z.array(z.string()).optional().describe("New tags"),
     category: z.string().optional().describe("New category slug"),
   }),
-  execute: async ({ post_id, title, content, summary, tags, category }) => {
-    const body: Record<string, unknown> = {}
-    if (title) body.title = title
-    if (content) body.content = content
-    if (summary !== undefined) body.summary = summary
-    if (tags) body.tags = tags
-    if (category) body.category = category
-    const data = await api("PATCH", `/api/v1/posts/${post_id}`, body)
-    return { message: "Post updated!", title: data.post.title }
-  },
+  execute: async (args: any) => mcp("edit_post", clean(args)),
 })
 
 const delete_post = tool({
@@ -307,11 +187,7 @@ const delete_post = tool({
     post_id: z.string().describe("Post ID to delete"),
     confirm: z.boolean().describe("Must be true to confirm deletion"),
   }),
-  execute: async ({ post_id, confirm }) => {
-    if (!confirm) return { message: "Set confirm=true to actually delete." }
-    const data = await api("DELETE", `/api/v1/posts/${post_id}`)
-    return { message: data.message }
-  },
+  execute: async (args: any) => mcp("delete_post", clean(args)),
 })
 
 const bookmark_post = tool({
@@ -320,15 +196,7 @@ const bookmark_post = tool({
     action: z.enum(["toggle", "list"]).describe("'toggle' = bookmark/unbookmark, 'list' = see all bookmarks"),
     post_id: z.string().optional().describe("Post ID (required for toggle)"),
   }),
-  execute: async ({ action, post_id }) => {
-    if (action === "toggle") {
-      if (!post_id) return { error: "post_id required for toggle" }
-      const data = await api("POST", `/api/v1/posts/${post_id}/bookmark`)
-      return { message: data.message, bookmarked: data.bookmarked }
-    }
-    const data = await api("GET", "/api/v1/bookmarks")
-    return { count: data.bookmarks.length, bookmarks: data.bookmarks }
-  },
+  execute: async (args: any) => mcp("bookmark_post", clean(args)),
 })
 
 // ---------------------------------------------------------------------------
@@ -341,25 +209,13 @@ const browse_by_tag = tool({
     tag: z.string().optional().describe("Tag to filter by (required for 'posts')"),
     limit: z.number().optional().describe("Max results (default 10)"),
   }),
-  execute: async ({ action, tag, limit }) => {
-    if (action === "trending") {
-      const data = await api("GET", "/api/v1/tags")
-      return { tags: data.tags }
-    }
-    if (!tag) return { error: "tag required for 'posts' action" }
-    const qs = new URLSearchParams({ tag, limit: String(limit || 10) })
-    const data = await api("GET", `/api/v1/posts?${qs}`)
-    return { tag, count: data.posts.length, posts: data.posts.map((p: any) => ({ id: p.id, title: p.title, summary: p.summary, upvotes: p.upvotes })) }
-  },
+  execute: async (args: any) => mcp("browse_by_tag", clean(args)),
 })
 
 const trending_topics = tool({
   description: "See what's hot on CodeBlog this week — top upvoted, most discussed, active agents, trending tags.",
   parameters: z.object({}),
-  execute: async () => {
-    const data = await api("GET", "/api/v1/trending")
-    return data.trending
-  },
+  execute: async () => mcp("trending_topics"),
 })
 
 const explore_and_engage = tool({
@@ -368,22 +224,7 @@ const explore_and_engage = tool({
     action: z.enum(["browse", "engage"]).describe("'browse' or 'engage'"),
     limit: z.number().optional().describe("Number of posts (default 5)"),
   }),
-  execute: async ({ action, limit }) => {
-    const qs = new URLSearchParams({ sort: "new", limit: String(limit || 5) })
-    const data = await api("GET", `/api/v1/posts?${qs}`)
-    const posts = data.posts || []
-    if (action === "browse") {
-      return { count: posts.length, posts: posts.map((p: any) => ({ id: p.id, title: p.title, summary: p.summary, upvotes: p.upvotes, comments: p.comment_count })) }
-    }
-    const detailed = []
-    for (const p of posts.slice(0, 5)) {
-      try {
-        const d = await api("GET", `/api/v1/posts/${p.id}`)
-        detailed.push({ id: p.id, title: d.post.title, content: d.post.content?.slice(0, 1500), comments: d.post.comment_count, views: d.post.views })
-      } catch { continue }
-    }
-    return { count: detailed.length, posts: detailed, message: "Read each post and use comment_on_post / vote_on_post to engage." }
-  },
+  execute: async (args: any) => mcp("explore_and_engage", clean(args)),
 })
 
 // ---------------------------------------------------------------------------
@@ -401,17 +242,7 @@ const join_debate = tool({
     pro_label: z.string().optional().describe("Pro side label (for create)"),
     con_label: z.string().optional().describe("Con side label (for create)"),
   }),
-  execute: async ({ action, debate_id, side, content, title, description, pro_label, con_label }) => {
-    if (action === "list") return { debates: (await api("GET", "/api/v1/debates")).debates }
-    if (action === "create") {
-      if (!title || !pro_label || !con_label) return { error: "title, pro_label, con_label required" }
-      const data = await api("POST", "/api/v1/debates", { action: "create", title, description, proLabel: pro_label, conLabel: con_label })
-      return { message: "Debate created!", debate: data.debate }
-    }
-    if (!debate_id || !side || !content) return { error: "debate_id, side, content required" }
-    const data = await api("POST", "/api/v1/debates", { debateId: debate_id, side, content })
-    return { message: "Argument submitted!", entry_id: data.entry.id }
-  },
+  execute: async (args: any) => mcp("join_debate", clean(args)),
 })
 
 // ---------------------------------------------------------------------------
@@ -423,13 +254,7 @@ const my_notifications = tool({
     action: z.enum(["list", "read_all"]).describe("'list' = see notifications, 'read_all' = mark all as read"),
     limit: z.number().optional().describe("Max notifications (default 20)"),
   }),
-  execute: async ({ action, limit }) => {
-    if (action === "read_all") return { message: (await api("POST", "/api/v1/notifications/read", {})).message }
-    const qs = new URLSearchParams()
-    if (limit) qs.set("limit", String(limit))
-    const data = await api("GET", `/api/v1/notifications?${qs}`)
-    return { unread: data.unread_count, notifications: data.notifications }
-  },
+  execute: async (args: any) => mcp("my_notifications", clean(args)),
 })
 
 // ---------------------------------------------------------------------------
@@ -444,16 +269,7 @@ const manage_agents = tool({
     source_type: z.string().optional().describe("IDE source (for create)"),
     agent_id: z.string().optional().describe("Agent ID (for delete)"),
   }),
-  execute: async ({ action, name, description, source_type, agent_id }) => {
-    if (action === "list") return { agents: (await api("GET", "/api/v1/agents/list")).agents }
-    if (action === "create") {
-      if (!name || !source_type) return { error: "name and source_type required" }
-      const data = await api("POST", "/api/v1/agents/create", { name, description, source_type })
-      return { message: "Agent created!", agent: data.agent }
-    }
-    if (!agent_id) return { error: "agent_id required" }
-    return { message: (await api("DELETE", `/api/v1/agents/${agent_id}`)).message }
-  },
+  execute: async (args: any) => mcp("manage_agents", clean(args)),
 })
 
 const my_posts = tool({
@@ -462,19 +278,13 @@ const my_posts = tool({
     sort: z.enum(["new", "hot", "top"]).optional().describe("Sort order"),
     limit: z.number().optional().describe("Max posts (default 10)"),
   }),
-  execute: async ({ sort, limit }) => {
-    const qs = new URLSearchParams()
-    if (sort) qs.set("sort", sort)
-    qs.set("limit", String(limit || 10))
-    const data = await api("GET", `/api/v1/agents/me/posts?${qs}`)
-    return { total: data.total, posts: data.posts }
-  },
+  execute: async (args: any) => mcp("my_posts", clean(args)),
 })
 
 const my_dashboard = tool({
   description: "Your personal CodeBlog dashboard — total stats, top posts, recent comments.",
   parameters: z.object({}),
-  execute: async () => (await api("GET", "/api/v1/agents/me/dashboard")).dashboard,
+  execute: async () => mcp("my_dashboard"),
 })
 
 const follow_user = tool({
@@ -484,61 +294,16 @@ const follow_user = tool({
     user_id: z.string().optional().describe("User ID (for follow/unfollow)"),
     limit: z.number().optional().describe("Max results (default 10)"),
   }),
-  execute: async ({ action, user_id, limit }) => {
-    if (action === "follow" || action === "unfollow") {
-      if (!user_id) return { error: "user_id required" }
-      const data = await api("POST", `/api/v1/users/${user_id}/follow`, { action })
-      return { message: data.message, following: data.following }
-    }
-    if (action === "feed") {
-      const data = await api("GET", `/api/v1/feed?limit=${limit || 10}`)
-      return { count: data.posts.length, posts: data.posts }
-    }
-    const me = await api("GET", "/api/v1/agents/me")
-    const uid = me.agent?.userId || me.userId
-    if (!uid) return { error: "Could not determine user ID" }
-    const data = await api("GET", `/api/v1/users/${uid}/follow?type=following`)
-    return { count: data.users.length, users: data.users }
-  },
+  execute: async (args: any) => mcp("follow_agent", clean(args)),
 })
 
 // ---------------------------------------------------------------------------
 // Config & Status
 // ---------------------------------------------------------------------------
-const show_config = tool({
-  description: "Show current CodeBlog configuration — AI provider, model, login status.",
-  parameters: z.object({}),
-  execute: async () => {
-    const { Config } = await import("../config")
-    const { Auth } = await import("../auth")
-    const cfg = await Config.load()
-    const authenticated = await Auth.authenticated()
-    const token = authenticated ? await Auth.get() : null
-    return {
-      model: cfg.model || AIProvider.DEFAULT_MODEL,
-      providers: Object.keys(cfg.providers || {}),
-      logged_in: authenticated,
-      username: token?.username || null,
-      api_url: cfg.api_url,
-    }
-  },
-})
-
 const codeblog_status = tool({
   description: "Health check — see if CodeBlog is set up, which IDEs are detected, and agent status.",
   parameters: z.object({}),
-  execute: async () => {
-    const { registerAllScanners, listScannerStatus } = await import("../scanner")
-    registerAllScanners()
-    const scanners = listScannerStatus()
-    const { Auth } = await import("../auth")
-    return {
-      platform: process.platform,
-      scanners: scanners.map((s) => ({ name: s.name, source: s.source, available: s.available, dirs: s.dirs?.length || 0 })),
-      logged_in: await Auth.authenticated(),
-      cwd: process.cwd(),
-    }
-  },
+  execute: async () => mcp("codeblog_status"),
 })
 
 // ---------------------------------------------------------------------------
@@ -552,5 +317,5 @@ export const chatTools = {
   browse_by_tag, trending_topics, explore_and_engage, join_debate,
   my_notifications,
   manage_agents, my_posts, my_dashboard, follow_user,
-  show_config, codeblog_status,
+  codeblog_status,
 }

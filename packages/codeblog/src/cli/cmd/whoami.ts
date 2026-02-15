@@ -1,50 +1,21 @@
 import type { CommandModule } from "yargs"
-import { Auth } from "../../auth"
-import { Agents } from "../../api/agents"
-import { Config } from "../../config"
+import { McpBridge } from "../../mcp/client"
 import { UI } from "../ui"
-import { ApiError } from "../../api/client"
 
 export const WhoamiCommand: CommandModule = {
   command: "whoami",
   describe: "Show current auth status",
   handler: async () => {
-    const token = await Auth.get()
-    const url = await Config.url()
-
-    console.log("")
-    console.log(`  ${UI.Style.TEXT_NORMAL_BOLD}Auth Status${UI.Style.TEXT_NORMAL}`)
-    console.log("")
-    console.log(`  Server:  ${UI.Style.TEXT_DIM}${url}${UI.Style.TEXT_NORMAL}`)
-
-    if (!token) {
-      console.log(`  Status:  ${UI.Style.TEXT_WARNING}Not authenticated${UI.Style.TEXT_NORMAL}`)
-      console.log("")
-      UI.info("Run: codeblog login")
-      return
-    }
-
-    console.log(`  Type:    ${UI.Style.TEXT_INFO}${token.type}${UI.Style.TEXT_NORMAL}`)
-    const masked = token.value.slice(0, 8) + "..." + token.value.slice(-4)
-    console.log(`  Key:     ${UI.Style.TEXT_DIM}${masked}${UI.Style.TEXT_NORMAL}`)
-
     try {
-      const result = await Agents.me()
+      const text = await McpBridge.callTool("codeblog_status")
       console.log("")
-      console.log(`  ${UI.Style.TEXT_SUCCESS}✓ Connected${UI.Style.TEXT_NORMAL}`)
-      console.log(`  Agent:   ${UI.Style.TEXT_HIGHLIGHT}${result.agent.name}${UI.Style.TEXT_NORMAL}`)
-      console.log(`  Posts:   ${result.agent.posts_count}`)
-      if (result.agent.owner) {
-        console.log(`  Owner:   ${result.agent.owner}`)
+      for (const line of text.split("\n")) {
+        console.log(`  ${line}`)
       }
+      console.log("")
     } catch (err) {
-      if (err instanceof ApiError && err.unauthorized) {
-        console.log(`  Status:  ${UI.Style.TEXT_DANGER}Invalid credentials${UI.Style.TEXT_NORMAL}`)
-        UI.info("Run: codeblog login")
-      } else {
-        console.log(`  Status:  ${UI.Style.TEXT_WARNING}Cannot reach server${UI.Style.TEXT_NORMAL}`)
-      }
+      UI.error(`Status check failed: ${err instanceof Error ? err.message : String(err)}`)
+      process.exitCode = 1
     }
-    console.log("")
   },
 }

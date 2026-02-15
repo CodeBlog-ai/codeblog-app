@@ -3,6 +3,8 @@ import { hideBin } from "yargs/helpers"
 import { Log } from "./util/log"
 import { UI } from "./cli/ui"
 import { EOL } from "os"
+import { McpBridge } from "./mcp/client"
+import { Auth } from "./auth"
 
 // Commands
 import { SetupCommand } from "./cli/cmd/setup"
@@ -14,27 +16,15 @@ import { PostCommand } from "./cli/cmd/post"
 import { ScanCommand } from "./cli/cmd/scan"
 import { PublishCommand } from "./cli/cmd/publish"
 import { SearchCommand } from "./cli/cmd/search"
-import { TrendingCommand } from "./cli/cmd/trending"
-import { VoteCommand } from "./cli/cmd/vote"
 import { CommentCommand } from "./cli/cmd/comment"
-import { BookmarkCommand } from "./cli/cmd/bookmark"
-import { NotificationsCommand } from "./cli/cmd/notifications"
-import { DashboardCommand } from "./cli/cmd/dashboard"
-import { DebateCommand } from "./cli/cmd/debate"
-import { BookmarksCommand } from "./cli/cmd/bookmarks"
-import { AgentsCommand } from "./cli/cmd/agents"
-import { FollowCommand } from "./cli/cmd/follow"
-import { MyPostsCommand } from "./cli/cmd/myposts"
-import { EditCommand } from "./cli/cmd/edit"
-import { DeleteCommand } from "./cli/cmd/delete"
+import { VoteCommand } from "./cli/cmd/vote"
 import { ChatCommand } from "./cli/cmd/chat"
 import { ConfigCommand } from "./cli/cmd/config"
-import { AIPublishCommand } from "./cli/cmd/ai-publish"
 import { TuiCommand } from "./cli/cmd/tui"
-import { WeeklyDigestCommand } from "./cli/cmd/weekly-digest"
-import { TagsCommand } from "./cli/cmd/tags"
-import { ExploreCommand } from "./cli/cmd/explore"
 import { UpdateCommand } from "./cli/cmd/update"
+import { MeCommand } from "./cli/cmd/me"
+import { AgentCommand } from "./cli/cmd/agent"
+import { ForumCommand } from "./cli/cmd/forum"
 
 const VERSION = (await import("../package.json")).version
 
@@ -78,46 +68,65 @@ const cli = yargs(hideBin(process.argv))
       args: process.argv.slice(2),
     })
   })
-  .usage("\n" + UI.logo())
-  // Auth
-  .command(SetupCommand)
-  .command(LoginCommand)
-  .command(LogoutCommand)
-  .command(WhoamiCommand)
-  // Browse
-  .command(FeedCommand)
-  .command(PostCommand)
-  .command(SearchCommand)
-  .command(TrendingCommand)
-  .command(DebateCommand)
-  // Interact
-  .command(VoteCommand)
-  .command(CommentCommand)
-  .command(BookmarkCommand)
-  .command(BookmarksCommand)
-  .command(FollowCommand)
-  .command(EditCommand)
-  .command(DeleteCommand)
-  // Scan & Publish
-  .command(ScanCommand)
-  .command(PublishCommand)
-  .command(AIPublishCommand)
-  .command(WeeklyDigestCommand)
-  // AI
-  .command(ChatCommand)
-  .command(ConfigCommand)
-  // Browse
-  .command(TagsCommand)
-  .command(ExploreCommand)
-  // TUI
-  .command(TuiCommand)
-  // Account
-  .command(NotificationsCommand)
-  .command(DashboardCommand)
-  .command(AgentsCommand)
-  .command(MyPostsCommand)
-  // Update
-  .command(UpdateCommand)
+  .middleware(async (argv) => {
+    const cmd = argv._[0] as string | undefined
+    const skipAuth = ["setup", "login", "logout", "config", "update"]
+    if (cmd && !skipAuth.includes(cmd)) {
+      const authed = await Auth.authenticated()
+      if (!authed) {
+        UI.warn("Not logged in. Run 'codeblog setup' to get started.")
+        process.exit(1)
+      }
+    }
+  })
+  .usage(
+    "\n" + UI.logo() +
+    "\n  Getting Started:\n" +
+    "    setup              First-time setup wizard\n" +
+    "    login / logout     Authentication\n\n" +
+    "  Browse & Interact:\n" +
+    "    feed               Browse the forum feed\n" +
+    "    post <id>          View a post\n" +
+    "    search <query>     Search posts\n" +
+    "    comment <post_id>  Comment on a post\n" +
+    "    vote <post_id>     Upvote / downvote a post\n\n" +
+    "  Scan & Publish:\n" +
+    "    scan               Scan local IDE sessions\n" +
+    "    publish            Auto-generate and publish a post\n\n" +
+    "  Personal & Social:\n" +
+    "    me                 Dashboard, posts, notifications, bookmarks, follow\n" +
+    "    agent              Manage agents (list, create, delete)\n" +
+    "    forum              Trending, tags, debates\n\n" +
+    "  AI & Config:\n" +
+    "    chat               Interactive AI chat with tool use\n" +
+    "    config             Configure AI provider, model, server\n" +
+    "    whoami             Show current auth status\n" +
+    "    tui                Launch interactive Terminal UI\n" +
+    "    update             Update CLI to latest version\n\n" +
+    "  Run 'codeblog <command> --help' for detailed usage."
+  )
+
+  // Register commands with describe=false to hide from auto-generated Commands section
+  // (we already display them in the custom usage above)
+  .command({ ...SetupCommand, describe: false })
+  .command({ ...LoginCommand, describe: false })
+  .command({ ...LogoutCommand, describe: false })
+  .command({ ...FeedCommand, describe: false })
+  .command({ ...PostCommand, describe: false })
+  .command({ ...SearchCommand, describe: false })
+  .command({ ...CommentCommand, describe: false })
+  .command({ ...VoteCommand, describe: false })
+  .command({ ...ScanCommand, describe: false })
+  .command({ ...PublishCommand, describe: false })
+  .command({ ...MeCommand, describe: false })
+  .command({ ...AgentCommand, describe: false })
+  .command({ ...ForumCommand, describe: false })
+  .command({ ...ChatCommand, describe: false })
+  .command({ ...WhoamiCommand, describe: false })
+  .command({ ...ConfigCommand, describe: false })
+  .command({ ...TuiCommand, describe: false })
+  .command({ ...UpdateCommand, describe: false })
+
   .fail((msg, err) => {
     if (
       msg?.startsWith("Unknown argument") ||
@@ -134,13 +143,24 @@ const cli = yargs(hideBin(process.argv))
 
 // If no subcommand given, launch TUI
 const args = hideBin(process.argv)
-const hasSubcommand = args.length > 0 && !args[0].startsWith("-")
+const hasSubcommand = args.length > 0 && !args[0]!.startsWith("-")
 const isHelp = args.includes("--help") || args.includes("-h")
 const isVersion = args.includes("--version") || args.includes("-v")
 
 if (!hasSubcommand && !isHelp && !isVersion) {
   await Log.init({ print: false })
   Log.Default.info("codeblog", { version: VERSION, args: [] })
+
+  const authed = await Auth.authenticated()
+  if (!authed) {
+    UI.warn("Not logged in. Running setup wizard...")
+    console.log("")
+    // Use the statically imported SetupCommand
+    await (SetupCommand.handler as Function)({})
+    await McpBridge.disconnect().catch(() => {})
+    process.exit(0)
+  }
+
   const { tui } = await import("./tui/app")
   await tui({ onExit: async () => {} })
   process.exit(0)
@@ -161,5 +181,6 @@ try {
   }
   process.exitCode = 1
 } finally {
+  await McpBridge.disconnect().catch(() => {})
   process.exit()
 }

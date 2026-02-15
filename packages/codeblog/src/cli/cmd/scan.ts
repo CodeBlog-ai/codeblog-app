@@ -1,5 +1,5 @@
 import type { CommandModule } from "yargs"
-import { registerAllScanners, scanAll, listScannerStatus } from "../../scanner"
+import { McpBridge } from "../../mcp/client"
 import { UI } from "../ui"
 
 export const ScanCommand: CommandModule = {
@@ -22,48 +22,59 @@ export const ScanCommand: CommandModule = {
         default: false,
       }),
   handler: async (args) => {
-    registerAllScanners()
-
-    if (args.status) {
-      const statuses = listScannerStatus()
-      console.log("")
-      console.log(`  ${UI.Style.TEXT_NORMAL_BOLD}IDE Scanner Status${UI.Style.TEXT_NORMAL}`)
-      console.log("")
-      for (const s of statuses) {
-        const icon = s.available ? `${UI.Style.TEXT_SUCCESS}✓${UI.Style.TEXT_NORMAL}` : `${UI.Style.TEXT_DIM}✗${UI.Style.TEXT_NORMAL}`
-        console.log(`  ${icon} ${UI.Style.TEXT_NORMAL_BOLD}${s.name}${UI.Style.TEXT_NORMAL} ${UI.Style.TEXT_DIM}(${s.source})${UI.Style.TEXT_NORMAL}`)
-        console.log(`    ${s.description}`)
-        if (s.dirs.length > 0) {
-          for (const dir of s.dirs) {
-            console.log(`    ${UI.Style.TEXT_DIM}${dir}${UI.Style.TEXT_NORMAL}`)
-          }
+    try {
+      if (args.status) {
+        const text = await McpBridge.callTool("codeblog_status")
+        console.log("")
+        console.log(`  ${UI.Style.TEXT_NORMAL_BOLD}CodeBlog Status${UI.Style.TEXT_NORMAL}`)
+        console.log("")
+        for (const line of text.split("\n")) {
+          console.log(`  ${line}`)
         }
-        if (s.error) console.log(`    ${UI.Style.TEXT_DANGER}${s.error}${UI.Style.TEXT_NORMAL}`)
+        console.log("")
+        return
+      }
+
+      const mcpArgs: Record<string, unknown> = { limit: args.limit }
+      if (args.source) mcpArgs.source = args.source
+
+      const text = await McpBridge.callTool("scan_sessions", mcpArgs)
+      let sessions: Array<{
+        id: string; source: string; project: string; title: string;
+        messages: number; human: number; ai: number; modified: string;
+        size: string; path: string; preview?: string
+      }>
+
+      try {
+        sessions = JSON.parse(text)
+      } catch {
+        // Fallback: just print the raw text
+        console.log(text)
+        return
+      }
+
+      if (sessions.length === 0) {
+        UI.info("No IDE sessions found. Try running with --status to check scanner availability.")
+        return
+      }
+
+      console.log("")
+      console.log(`  ${UI.Style.TEXT_NORMAL_BOLD}Found ${sessions.length} sessions${UI.Style.TEXT_NORMAL}`)
+      console.log("")
+
+      for (const session of sessions) {
+        const source = `${UI.Style.TEXT_INFO}[${session.source}]${UI.Style.TEXT_NORMAL}`
+        const date = new Date(session.modified).toLocaleDateString()
+        const msgs = `${UI.Style.TEXT_DIM}${session.human}h/${session.ai}a msgs${UI.Style.TEXT_NORMAL}`
+
+        console.log(`  ${source} ${UI.Style.TEXT_NORMAL_BOLD}${session.project}${UI.Style.TEXT_NORMAL} ${UI.Style.TEXT_DIM}${date}${UI.Style.TEXT_NORMAL}`)
+        console.log(`    ${session.title}`)
+        console.log(`    ${msgs}  ${UI.Style.TEXT_DIM}${session.id}${UI.Style.TEXT_NORMAL}`)
         console.log("")
       }
-      return
-    }
-
-    const sessions = scanAll(args.limit as number, args.source as string | undefined)
-
-    if (sessions.length === 0) {
-      UI.info("No IDE sessions found. Try running with --status to check scanner availability.")
-      return
-    }
-
-    console.log("")
-    console.log(`  ${UI.Style.TEXT_NORMAL_BOLD}Found ${sessions.length} sessions${UI.Style.TEXT_NORMAL}`)
-    console.log("")
-
-    for (const session of sessions) {
-      const source = `${UI.Style.TEXT_INFO}[${session.source}]${UI.Style.TEXT_NORMAL}`
-      const date = session.modifiedAt.toLocaleDateString()
-      const msgs = `${UI.Style.TEXT_DIM}${session.humanMessages}h/${session.aiMessages}a msgs${UI.Style.TEXT_NORMAL}`
-
-      console.log(`  ${source} ${UI.Style.TEXT_NORMAL_BOLD}${session.project}${UI.Style.TEXT_NORMAL} ${UI.Style.TEXT_DIM}${date}${UI.Style.TEXT_NORMAL}`)
-      console.log(`    ${session.title}`)
-      console.log(`    ${msgs}  ${UI.Style.TEXT_DIM}${session.id}${UI.Style.TEXT_NORMAL}`)
-      console.log("")
+    } catch (err) {
+      UI.error(`Scan failed: ${err instanceof Error ? err.message : String(err)}`)
+      process.exitCode = 1
     }
   },
 }

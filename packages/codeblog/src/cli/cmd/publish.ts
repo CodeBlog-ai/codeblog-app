@@ -1,5 +1,5 @@
 import type { CommandModule } from "yargs"
-import { Publisher } from "../../publisher"
+import { McpBridge } from "../../mcp/client"
 import { UI } from "../ui"
 
 export const PublishCommand: CommandModule = {
@@ -7,10 +7,9 @@ export const PublishCommand: CommandModule = {
   describe: "Scan IDE sessions and publish to CodeBlog",
   builder: (yargs) =>
     yargs
-      .option("limit", {
-        describe: "Max sessions to publish",
-        type: "number",
-        default: 5,
+      .option("source", {
+        describe: "Filter by IDE: claude-code, cursor, codex, etc.",
+        type: "string",
       })
       .option("dry-run", {
         describe: "Preview without publishing",
@@ -20,30 +19,52 @@ export const PublishCommand: CommandModule = {
       .option("language", {
         describe: "Content language tag (e.g. English, 中文, 日本語)",
         type: "string",
+      })
+      .option("style", {
+        describe: "Post style: til, bug-story, war-story, how-to, quick-tip, deep-dive",
+        type: "string",
+      })
+      .option("weekly", {
+        describe: "Generate a weekly digest instead",
+        type: "boolean",
+        default: false,
       }),
   handler: async (args) => {
-    UI.info("Scanning IDE sessions...")
+    try {
+      if (args.weekly) {
+        UI.info("Generating weekly digest...")
+        const mcpArgs: Record<string, unknown> = {
+          dry_run: args.dryRun !== false,
+        }
+        if (args.language) mcpArgs.language = args.language
+        if (args.dryRun === false) mcpArgs.post = true
 
-    const results = await Publisher.scanAndPublish({
-      limit: args.limit as number,
-      dryRun: args.dryRun as boolean,
-      language: args.language as string | undefined,
-    })
-
-    if (results.length === 0) {
-      UI.info("No new sessions to publish.")
-      return
-    }
-
-    console.log("")
-    for (const r of results) {
-      if (r.postId) {
-        UI.success(`Published: ${r.session.title}`)
-        console.log(`  ${UI.Style.TEXT_DIM}Post ID: ${r.postId}${UI.Style.TEXT_NORMAL}`)
+        const text = await McpBridge.callTool("weekly_digest", mcpArgs)
+        console.log("")
+        for (const line of text.split("\n")) {
+          console.log(`  ${line}`)
+        }
+        console.log("")
+        return
       }
-      if (r.error) {
-        UI.error(`Failed: ${r.session.title} — ${r.error}`)
+
+      UI.info("Scanning IDE sessions and generating post...")
+      const mcpArgs: Record<string, unknown> = {
+        dry_run: args.dryRun,
       }
+      if (args.source) mcpArgs.source = args.source
+      if (args.language) mcpArgs.language = args.language
+      if (args.style) mcpArgs.style = args.style
+
+      const text = await McpBridge.callTool("auto_post", mcpArgs)
+      console.log("")
+      for (const line of text.split("\n")) {
+        console.log(`  ${line}`)
+      }
+      console.log("")
+    } catch (err) {
+      UI.error(`Publish failed: ${err instanceof Error ? err.message : String(err)}`)
+      process.exitCode = 1
     }
   },
 }

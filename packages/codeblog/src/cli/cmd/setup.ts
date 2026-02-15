@@ -1,56 +1,118 @@
 import type { CommandModule } from "yargs"
 import { Auth } from "../../auth"
 import { OAuth } from "../../auth/oauth"
-import { AIProvider } from "../../ai/provider"
-import { registerAllScanners, scanAll } from "../../scanner"
-import { Publisher } from "../../publisher"
+import { McpBridge } from "../../mcp/client"
 import { UI } from "../ui"
 
-export const SetupCommand: CommandModule = {
-  command: "setup",
-  describe: "First-time setup wizard: login → scan → publish",
-  handler: async () => {
-    console.log(UI.logo())
-    console.log(`  ${UI.Style.TEXT_NORMAL_BOLD}Welcome to CodeBlog! 🚀${UI.Style.TEXT_NORMAL}`)
-    console.log(`  ${UI.Style.TEXT_DIM}The AI-powered coding forum${UI.Style.TEXT_NORMAL}`)
-    console.log("")
+function extractApiKey(text: string): string | null {
+  const match = text.match(/^API-KEY:\s*(\S+)/m)
+  return match ? match[1]! : null
+}
 
-    // Step 1: Auth
-    const authenticated = await Auth.authenticated()
-    if (!authenticated) {
-      UI.info("Step 1: Let's log you in...")
-      console.log("")
-      const provider = await UI.input("  Choose provider (github/google) [github]: ")
-      const chosen = (provider === "google" ? "google" : "github") as "github" | "google"
+function extractUsername(text: string): string | null {
+  // Try "Account: username (email)" first (registration path)
+  const acct = text.match(/^Account:\s*(\S+)/m)
+  if (acct) return acct[1]!
+  // Try "Owner: username" (api_key verification path)
+  const owner = text.match(/^Owner:\s*(\S+)/m)
+  if (owner) return owner[1]!
+  return null
+}
 
-      try {
-        await OAuth.login(chosen)
-        UI.success("Authenticated!")
-      } catch (err) {
-        UI.error(`Authentication failed: ${err instanceof Error ? err.message : String(err)}`)
-        UI.info("You can try again with: codeblog login")
-        return
-      }
+export { extractApiKey, extractUsername }
+
+async function authQuickSignup(): Promise<boolean> {
+  const email = await UI.input("  Email: ")
+  if (!email) { UI.error("Email is required."); return false }
+
+  const username = await UI.input("  Username: ")
+  if (!username) { UI.error("Username is required."); return false }
+
+  const password = await UI.password("  Password: ")
+  if (!password || password.length < 6) { UI.error("Password must be at least 6 characters."); return false }
+
+  const lang = await UI.input("  Language (e.g. English/中文) [English]: ")
+  const default_language = lang || "English"
+
+  console.log("")
+  UI.info("Creating your account...")
+
+  try {
+    const result = await McpBridge.callTool("codeblog_setup", {
+      email, username, password, default_language,
+    })
+
+    const apiKey = extractApiKey(result)
+    const user = extractUsername(result)
+
+    if (apiKey) {
+      await Auth.set({ type: "apikey", value: apiKey, username: user || username })
     } else {
-      UI.success("Already authenticated!")
+      UI.warn("Account created but could not extract API key from response.")
+      UI.info("Try: codeblog setup → option 3 to paste your API key manually.")
+      return false
     }
 
-    console.log("")
+    return true
+  } catch (err) {
+    UI.error(`Signup failed: ${err instanceof Error ? err.message : String(err)}`)
+    return false
+  }
+}
+async function authOAuth(): Promise<boolean> {
+  const provider = await UI.input("  Choose provider (github/google) [github]: ")
+  const chosen = (provider === "google" ? "google" : "github") as "github" | "google"
 
-    // Step 2: Scan
-    UI.info("Step 2: Scanning your IDE sessions...")
-    registerAllScanners()
-    const sessions = scanAll(10)
+  try {
+    await OAuth.login(chosen)
+    return true
+  } catch (err) {
+    UI.error(`Authentication failed: ${err instanceof Error ? err.message : String(err)}`)
+    return false
+  }
+}
 
-    if (sessions.length === 0) {
-      UI.warn("No IDE sessions found. You can manually create posts later.")
-      UI.info("Run: codeblog scan --status to check which IDEs are detected")
+async function authApiKey(): Promise<boolean> {
+  const key = await UI.input("  Paste your API key (starts with cbk_): ")
+  if (!key || !key.startsWith("cbk_")) {
+    UI.error("Invalid API key. It should start with 'cbk_'.")
+    return false
+  }
+
+  UI.info("Verifying API key...")
+  try {
+    const result = await McpBridge.callTool("codeblog_setup", { api_key: key })
+    const username = extractUsername(result)
+    await Auth.set({ type: "apikey", value: key, username: username || undefined })
+    return true
+  } catch (err) {
+    UI.error(`Verification failed: ${err instanceof Error ? err.message : String(err)}`)
+    return false
+  }
+}
+
+async function postAuthFlow(): Promise<void> {
+  console.log("")
+
+  // Scan
+  UI.info("Scanning your IDE sessions...")
+  try {
+    const text = await McpBridge.callTool("scan_sessions", { limit: 10 })
+    let sessions: Array<{ id: string; source: string; project: string; title: string }>
+    try {
+      sessions = JSON.parse(text)
+    } catch {
+      console.log(text)
       return
     }
 
-    console.log(`  Found ${UI.Style.TEXT_HIGHLIGHT}${sessions.length}${UI.Style.TEXT_NORMAL} sessions across your IDEs`)
-    console.log("")
+    if (sessions.length === 0) {
+      UI.warn("No IDE sessions found. You can scan later with: codeblog scan")
+      return
+    }
 
+    console.log(`  Found ${UI.Style.TEXT_HIGHLIGHT}${sessions.length}${UI.Style.TEXT_NORMAL} sessions`)
+    console.log("")
     for (const s of sessions.slice(0, 5)) {
       console.log(`  ${UI.Style.TEXT_INFO}[${s.source}]${UI.Style.TEXT_NORMAL} ${s.project} — ${s.title.slice(0, 60)}`)
     }
@@ -59,45 +121,81 @@ export const SetupCommand: CommandModule = {
     }
     console.log("")
 
-    // Step 3: Publish
+    // Publish
     const answer = await UI.input("  Publish your latest session to CodeBlog? (y/n) [y]: ")
     if (answer.toLowerCase() === "n") {
-      UI.info("Skipped publishing. You can publish later with: codeblog publish")
+      UI.info("Skipped. You can publish later with: codeblog publish")
+    } else {
+      UI.info("Publishing...")
+      try {
+        const result = await McpBridge.callTool("auto_post", { dry_run: false })
+        console.log("")
+        for (const line of result.split("\n")) {
+          console.log(`  ${line}`)
+        }
+      } catch (pubErr) {
+        UI.error(`Publish failed: ${pubErr instanceof Error ? pubErr.message : String(pubErr)}`)
+      }
+    }
+  } catch (err) {
+    UI.error(`Scan failed: ${err instanceof Error ? err.message : String(err)}`)
+  }
+}
+export const SetupCommand: CommandModule = {
+  command: "setup",
+  describe: "First-time setup wizard: authenticate → scan → publish",
+  handler: async () => {
+    console.log(UI.logo())
+    console.log(`  ${UI.Style.TEXT_NORMAL_BOLD}Welcome to CodeBlog!${UI.Style.TEXT_NORMAL}`)
+    console.log(`  ${UI.Style.TEXT_DIM}The AI-powered coding forum${UI.Style.TEXT_NORMAL}`)
+    console.log("")
+
+    const alreadyAuthed = await Auth.authenticated()
+    let authenticated = alreadyAuthed
+
+    if (alreadyAuthed) {
+      UI.success("Already authenticated!")
+    } else {
+      const choice = await UI.select("  How would you like to get started?", [
+        "Quick signup (email + password)",
+        "Login with GitHub / Google",
+        "Paste existing API key",
+      ])
+
+      console.log("")
+
+      switch (choice) {
+        case 0:
+          authenticated = await authQuickSignup()
+          break
+        case 1:
+          authenticated = await authOAuth()
+          break
+        case 2:
+          authenticated = await authApiKey()
+          break
+      }
+    }
+
+    if (!authenticated) {
+      console.log("")
+      UI.info("You can try again with: codeblog setup")
       return
     }
 
-    UI.info("Step 3: Publishing...")
-    const results = await Publisher.scanAndPublish({ limit: 1 })
+    const token = await Auth.get()
+    UI.success(`Authenticated as ${token?.username || "user"}!`)
 
-    for (const r of results) {
-      if (r.postId) UI.success(`Published: ${r.session.title}`)
-      if (r.error) UI.error(`Failed: ${r.error}`)
-    }
+    await postAuthFlow()
 
     console.log("")
-    UI.success("Setup complete! 🎉")
+    UI.success("Setup complete!")
     console.log("")
-
-    // Check if AI is configured
-    const hasKey = await AIProvider.hasAnyKey()
-    if (!hasKey) {
-      console.log(`  ${UI.Style.TEXT_WARNING}💡 Optional: Configure an AI provider to unlock AI features${UI.Style.TEXT_NORMAL}`)
-      console.log(`  ${UI.Style.TEXT_DIM}(ai-publish, chat, and other AI-powered commands)${UI.Style.TEXT_NORMAL}`)
-      console.log("")
-      console.log(`    ${UI.Style.TEXT_HIGHLIGHT}codeblog config --provider anthropic --api-key sk-ant-...${UI.Style.TEXT_NORMAL}`)
-      console.log(`    ${UI.Style.TEXT_HIGHLIGHT}codeblog config --provider openai --api-key sk-...${UI.Style.TEXT_NORMAL}`)
-      console.log("")
-      console.log(`  ${UI.Style.TEXT_DIM}Run: codeblog config --list  to see all 15+ supported providers${UI.Style.TEXT_NORMAL}`)
-      console.log("")
-    }
-
     console.log(`  ${UI.Style.TEXT_DIM}Useful commands:${UI.Style.TEXT_NORMAL}`)
     console.log(`    codeblog feed        ${UI.Style.TEXT_DIM}— Browse the forum${UI.Style.TEXT_NORMAL}`)
     console.log(`    codeblog scan        ${UI.Style.TEXT_DIM}— Scan IDE sessions${UI.Style.TEXT_NORMAL}`)
     console.log(`    codeblog publish     ${UI.Style.TEXT_DIM}— Publish sessions${UI.Style.TEXT_NORMAL}`)
-    console.log(`    codeblog ai-publish  ${UI.Style.TEXT_DIM}— AI writes a post from your session${UI.Style.TEXT_NORMAL}`)
-    console.log(`    codeblog chat        ${UI.Style.TEXT_DIM}— Interactive AI chat${UI.Style.TEXT_NORMAL}`)
-    console.log(`    codeblog dashboard   ${UI.Style.TEXT_DIM}— Your stats${UI.Style.TEXT_NORMAL}`)
+    console.log(`    codeblog chat        ${UI.Style.TEXT_DIM}— AI chat${UI.Style.TEXT_NORMAL}`)
     console.log("")
   },
 }
