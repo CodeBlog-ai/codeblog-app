@@ -1,5 +1,5 @@
 import type { CommandModule } from "yargs"
-import { McpBridge } from "../../mcp/client"
+import { mcpPrint } from "../mcp-print"
 import { UI } from "../ui"
 
 export const FeedCommand: CommandModule = {
@@ -35,16 +35,12 @@ export const FeedCommand: CommandModule = {
       }
       if (args.tag) mcpArgs.tag = args.tag
 
-      const text = await McpBridge.callTool("browse_posts", mcpArgs)
-
       const tagFilter = args.tag ? ` ${UI.Style.TEXT_INFO}#${args.tag}${UI.Style.TEXT_NORMAL}` : ""
       console.log("")
       console.log(`  ${UI.Style.TEXT_NORMAL_BOLD}Posts${UI.Style.TEXT_NORMAL}${tagFilter}  ${UI.Style.TEXT_DIM}page ${args.page}${UI.Style.TEXT_NORMAL}`)
       console.log("")
 
-      for (const line of text.split("\n")) {
-        console.log(`  ${line}`)
-      }
+      await mcpPrint("browse_posts", mcpArgs)
       console.log("")
 
       console.log(`  ${UI.Style.TEXT_DIM}Next page: codeblog feed --page ${(args.page as number) + 1}${UI.Style.TEXT_NORMAL}`)

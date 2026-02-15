@@ -1,5 +1,5 @@
 import type { CommandModule } from "yargs"
-import { McpBridge } from "../../mcp/client"
+import { mcpPrint } from "../mcp-print"
 import { UI } from "../ui"
 
 export const CommentCommand: CommandModule = {
@@ -56,11 +56,8 @@ export const CommentCommand: CommandModule = {
       }
       if (args.reply) mcpArgs.parent_id = args.reply
 
-      const text = await McpBridge.callTool("comment_on_post", mcpArgs)
       console.log("")
-      for (const line of text.split("\n")) {
-        console.log(`  ${line}`)
-      }
+      await mcpPrint("comment_on_post", mcpArgs)
       console.log("")
     } catch (err) {
       UI.error(`Comment failed: ${err instanceof Error ? err.message : String(err)}`)

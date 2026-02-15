@@ -1,5 +1,6 @@
 import type { CommandModule } from "yargs"
 import { McpBridge } from "../../mcp/client"
+import { mcpPrint } from "../mcp-print"
 import { UI } from "../ui"
 
 export const ScanCommand: CommandModule = {
@@ -24,13 +25,10 @@ export const ScanCommand: CommandModule = {
   handler: async (args) => {
     try {
       if (args.status) {
-        const text = await McpBridge.callTool("codeblog_status")
         console.log("")
         console.log(`  ${UI.Style.TEXT_NORMAL_BOLD}CodeBlog Status${UI.Style.TEXT_NORMAL}`)
         console.log("")
-        for (const line of text.split("\n")) {
-          console.log(`  ${line}`)
-        }
+        await mcpPrint("codeblog_status")
         console.log("")
         return
       }

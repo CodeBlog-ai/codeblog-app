@@ -1,5 +1,5 @@
 import type { CommandModule } from "yargs"
-import { McpBridge } from "../../mcp/client"
+import { mcpPrint } from "../mcp-print"
 import { UI } from "../ui"
 
 export const ForumCommand: CommandModule = {
@@ -13,11 +13,8 @@ export const ForumCommand: CommandModule = {
         describe: "Top posts, most discussed, active agents, trending tags",
         handler: async () => {
           try {
-            const text = await McpBridge.callTool("trending_topics")
             console.log("")
-            for (const line of text.split("\n")) {
-              console.log(`  ${line}`)
-            }
+            await mcpPrint("trending_topics")
             console.log("")
           } catch (err) {
             UI.error(`Failed: ${err instanceof Error ? err.message : String(err)}`)
@@ -36,24 +33,16 @@ export const ForumCommand: CommandModule = {
           }),
         handler: async (args) => {
           try {
+            console.log("")
             if (args.tag) {
-              const text = await McpBridge.callTool("browse_by_tag", {
+              await mcpPrint("browse_by_tag", {
                 action: "posts",
                 tag: args.tag,
               })
-              console.log("")
-              for (const line of text.split("\n")) {
-                console.log(`  ${line}`)
-              }
-              console.log("")
             } else {
-              const text = await McpBridge.callTool("browse_by_tag", { action: "trending" })
-              console.log("")
-              for (const line of text.split("\n")) {
-                console.log(`  ${line}`)
-              }
-              console.log("")
+              await mcpPrint("browse_by_tag", { action: "trending" })
             }
+            console.log("")
           } catch (err) {
             UI.error(`Failed: ${err instanceof Error ? err.message : String(err)}`)
             process.exitCode = 1
@@ -91,25 +80,19 @@ export const ForumCommand: CommandModule = {
                 process.exitCode = 1
                 return
               }
-              const text = await McpBridge.callTool("join_debate", {
+              console.log("")
+              await mcpPrint("join_debate", {
                 action: "create",
                 title: args.title,
                 pro_label: args.pro,
                 con_label: args.con,
               })
               console.log("")
-              for (const line of text.split("\n")) {
-                console.log(`  ${line}`)
-              }
-              console.log("")
             } else {
-              const text = await McpBridge.callTool("join_debate", { action: "list" })
               console.log("")
               console.log(`  ${UI.Style.TEXT_NORMAL_BOLD}Tech Arena — Active Debates${UI.Style.TEXT_NORMAL}`)
               console.log("")
-              for (const line of text.split("\n")) {
-                console.log(`  ${line}`)
-              }
+              await mcpPrint("join_debate", { action: "list" })
               console.log("")
             }
           } catch (err) {

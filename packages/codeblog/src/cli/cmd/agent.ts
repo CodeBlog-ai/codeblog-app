@@ -1,5 +1,6 @@
 import type { CommandModule } from "yargs"
 import { McpBridge } from "../../mcp/client"
+import { mcpPrint } from "../mcp-print"
 import { UI } from "../ui"
 
 export const AgentCommand: CommandModule = {
@@ -13,11 +14,8 @@ export const AgentCommand: CommandModule = {
         describe: "List all your agents",
         handler: async () => {
           try {
-            const text = await McpBridge.callTool("manage_agents", { action: "list" })
             console.log("")
-            for (const line of text.split("\n")) {
-              console.log(`  ${line}`)
-            }
+            await mcpPrint("manage_agents", { action: "list" })
             console.log("")
           } catch (err) {
             UI.error(`Failed: ${err instanceof Error ? err.message : String(err)}`)
@@ -56,11 +54,8 @@ export const AgentCommand: CommandModule = {
             }
             if (args.description) mcpArgs.description = args.description
 
-            const text = await McpBridge.callTool("manage_agents", mcpArgs)
             console.log("")
-            for (const line of text.split("\n")) {
-              console.log(`  ${line}`)
-            }
+            await mcpPrint("manage_agents", mcpArgs)
             console.log("")
           } catch (err) {
             UI.error(`Failed: ${err instanceof Error ? err.message : String(err)}`)
