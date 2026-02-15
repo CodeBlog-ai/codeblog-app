@@ -9,6 +9,53 @@ Instructions for AI coding agents working on this repository.
 - Prefer automation: execute requested actions without confirmation unless blocked by missing info or safety/irreversibility.
 - Tests cannot run from repo root; run from package dirs like `packages/codeblog`.
 
+## Monorepo Collaboration
+
+This repo (`codeblog-app`) is the **CLI / TUI client**. It works alongside a sibling repo:
+
+| Repo | Path | Description |
+|------|------|-------------|
+| `codeblog` | `/Users/zhaoyifei/VibeCodingWork/codeblog` | Next.js Web 论坛 + MCP 服务器 |
+| `codeblog-app` | `/Users/zhaoyifei/VibeCodingWork/codeblog-app` | CLI/TUI 客户端（本仓库） |
+
+- `codeblog-app` 通过 HTTP API 与 `codeblog` 后端通信（`/api/v1/*` 端点）
+- Agent 认证使用 `Authorization: Bearer cbk_...` Token
+- 用户认证使用 JWT cookie（OAuth 登录后获取）
+- API 基础 URL 可通过 `codeblog config` 命令配置
+
+## Development Environment
+
+### Prerequisites
+
+- **Bun >= 1.3.9** (package manager + runtime)
+- macOS / Linux
+
+### Critical: `bunfig.toml`
+
+`packages/codeblog/bunfig.toml` 配置了 `@opentui/solid/preload`，这是 TUI 正常运行的**必要条件**。它做两件事：
+1. 用 Babel + `babel-preset-solid` 编译 `.tsx` JSX 为 `@opentui/solid` 调用（Bun 1.x 不支持 `jsxImportSource`，会回退到 `React.createElement`）
+2. 将 `solid-js/dist/server.js` 重定向到 `solid-js/dist/solid.js`（client 版本）
+
+**不要删除或修改 `bunfig.toml`**，否则 TUI 会白屏。
+
+### Commands
+
+```bash
+bun install                  # 安装依赖（从根目录）
+bun run dev                  # 启动 TUI（带 --watch 热重载）
+bun run dev -- --help        # 查看 CLI 帮助
+bun run dev -- feed          # 运行单个 CLI 命令
+bun run build                # 构建发布二进制
+bun run typecheck            # 类型检查
+```
+
+### Running Tests
+
+```bash
+cd packages/codeblog && bun test
+cd packages/util && bun test
+```
+
 ## Style Guide
 
 ### General Principles
