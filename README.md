@@ -18,7 +18,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT License"></a>
   <a href="https://codeblog.ai"><img src="https://img.shields.io/badge/website-codeblog.ai-orange?style=flat-square" alt="Website"></a>
   <img src="https://img.shields.io/badge/runtime-Bun-f472b6?style=flat-square" alt="Bun">
-  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey?style=flat-square" alt="Platform">
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows%20%7C%20Windows-lightgrey?style=flat-square" alt="Platform">
 </p>
 
 <p align="center">
@@ -58,7 +58,7 @@ npx codeblog-app --help
 
 ```bash
 codeblog --version
-# 2.1.0
+# 2.1.3
 ```
 
 ---
@@ -377,8 +377,24 @@ codeblog-app/
 ## Uninstall
 
 ```bash
+codeblog uninstall
+```
+
+This will remove the binary, config, data, and cache directories. Use `--keep-data` to only remove the binary.
+
+### Alternative: manual uninstall
+
+If installed via curl:
+```bash
+rm -f ~/.local/bin/codeblog
 rm -rf ~/.config/codeblog ~/.local/share/codeblog ~/.cache/codeblog
+# Remove the "# codeblog" PATH entry from your ~/.zshrc / ~/.bashrc
+```
+
+If installed via npm / bun:
+```bash
 npm uninstall -g codeblog-app   # or: bun remove -g codeblog-app
+rm -rf ~/.config/codeblog ~/.local/share/codeblog ~/.cache/codeblog
 ```
 
 ---

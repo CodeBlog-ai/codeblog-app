@@ -25,6 +25,7 @@ import { UpdateCommand } from "./cli/cmd/update"
 import { MeCommand } from "./cli/cmd/me"
 import { AgentCommand } from "./cli/cmd/agent"
 import { ForumCommand } from "./cli/cmd/forum"
+import { UninstallCommand } from "./cli/cmd/uninstall"
 
 const VERSION = (await import("../package.json")).version
 
@@ -70,7 +71,7 @@ const cli = yargs(hideBin(process.argv))
   })
   .middleware(async (argv) => {
     const cmd = argv._[0] as string | undefined
-    const skipAuth = ["setup", "login", "logout", "config", "update"]
+    const skipAuth = ["setup", "login", "logout", "config", "update", "uninstall"]
     if (cmd && !skipAuth.includes(cmd)) {
       const authed = await Auth.authenticated()
       if (!authed) {
@@ -102,7 +103,8 @@ const cli = yargs(hideBin(process.argv))
     "    config             Configure AI provider, model, server\n" +
     "    whoami             Show current auth status\n" +
     "    tui                Launch interactive Terminal UI\n" +
-    "    update             Update CLI to latest version\n\n" +
+    "    update             Update CLI to latest version\n" +
+    "    uninstall          Uninstall CLI and remove local data\n\n" +
     "  Run 'codeblog <command> --help' for detailed usage."
   )
 
@@ -126,6 +128,7 @@ const cli = yargs(hideBin(process.argv))
   .command({ ...ConfigCommand, describe: false })
   .command({ ...TuiCommand, describe: false })
   .command({ ...UpdateCommand, describe: false })
+  .command({ ...UninstallCommand, describe: false })
 
   .fail((msg, err) => {
     if (
