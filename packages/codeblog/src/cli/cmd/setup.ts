@@ -30,14 +30,26 @@ async function authBrowser(): Promise<boolean> {
 
 // ─── Scan & Publish ──────────────────────────────────────────────────────────
 
+async function shimmerLine(text: string, durationMs = 2000): Promise<void> {
+  const frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+  const startTime = Date.now()
+  let i = 0
+  while (Date.now() - startTime < durationMs) {
+    Bun.stderr.write(`\r  ${UI.Style.TEXT_HIGHLIGHT}${frames[i % frames.length]}${UI.Style.TEXT_NORMAL} ${UI.Style.TEXT_DIM}${text}${UI.Style.TEXT_NORMAL}`)
+    i++
+    await Bun.sleep(80)
+  }
+  Bun.stderr.write(`\r  ${UI.Style.TEXT_SUCCESS}✓${UI.Style.TEXT_NORMAL} ${text}\n`)
+}
+
 async function scanAndPublish(): Promise<void> {
-  // Scan
-  await UI.typeText("Scanning your local IDE sessions...", { charDelay: 15 })
-  console.log("")
+  // Scan with shimmer animation
+  const scanPromise = McpBridge.callTool("scan_sessions", { limit: 10 })
+  await shimmerLine("Scanning local IDE sessions...", 1500)
 
   let sessions: Array<{ id: string; source: string; project: string; title: string }>
   try {
-    const text = await McpBridge.callTool("scan_sessions", { limit: 10 })
+    const text = await scanPromise
     try {
       sessions = JSON.parse(text)
     } catch {
@@ -58,6 +70,7 @@ async function scanAndPublish(): Promise<void> {
 
   // Show what we found
   const sources = [...new Set(sessions.map((s) => s.source))]
+  console.log("")
   await UI.typeText(
     `Found ${sessions.length} session${sessions.length > 1 ? "s" : ""} across ${sources.length} IDE${sources.length > 1 ? "s" : ""}: ${sources.join(", ")}`,
     { charDelay: 10 },
@@ -72,65 +85,97 @@ async function scanAndPublish(): Promise<void> {
   }
   console.log("")
 
-  await UI.typeText("Let me analyze your most interesting session and create a blog post...")
-  console.log("")
+  // Analyze with shimmer — show the thinking process step by step
+  await shimmerLine("Analyzing sessions for interesting insights...", 1200)
 
-  // Dry run — preview
+  // Dry run — preview (with shimmer while waiting)
   let preview: string
   try {
-    preview = await McpBridge.callTool("auto_post", { dry_run: true })
+    const postPromise = McpBridge.callTool("auto_post", { dry_run: true })
+    await shimmerLine("Crafting a blog post from your best session...", 2000)
+    preview = await postPromise
   } catch (err) {
     UI.warn(`Could not generate post: ${err instanceof Error ? err.message : String(err)}`)
     await UI.typeText("You can try again later with /publish in the app.")
     return
   }
 
-  // Display preview
+  // Display preview with structured layout
   const cleaned = UI.cleanMarkdown(preview)
+  console.log("")
   UI.divider()
 
-  // Extract and display title/tags nicely
+  // Parse out key fields for better display
   const lines = cleaned.split("\n")
+  let title = ""
+  let tags = ""
+  let category = ""
+  const bodyLines: string[] = []
+
   for (const line of lines) {
     const trimmed = line.trim()
-    if (!trimmed) {
-      console.log("")
-      continue
+    if (!trimmed || trimmed.startsWith("DRY RUN") || trimmed === "---" || trimmed.match(/^─+$/)) continue
+    if (trimmed.startsWith("Title:")) { title = trimmed.replace("Title:", "").trim(); continue }
+    if (trimmed.startsWith("Tags:")) { tags = trimmed.replace("Tags:", "").trim(); continue }
+    if (trimmed.startsWith("Category:")) { category = trimmed.replace("Category:", "").trim(); continue }
+    if (trimmed.startsWith("Session:")) continue
+    bodyLines.push(trimmed)
+  }
+
+  // Structured display
+  if (title) {
+    console.log(`  ${UI.Style.TEXT_NORMAL_BOLD}📝 ${title}${UI.Style.TEXT_NORMAL}`)
+    console.log("")
+  }
+  if (category || tags) {
+    const meta: string[] = []
+    if (category) meta.push(`Category: ${category}`)
+    if (tags) meta.push(`Tags: ${tags}`)
+    console.log(`  ${UI.Style.TEXT_DIM}${meta.join("  ·  ")}${UI.Style.TEXT_NORMAL}`)
+    console.log("")
+  }
+  if (bodyLines.length > 0) {
+    // Show a preview snippet (first few meaningful lines)
+    const snippet = bodyLines.slice(0, 6)
+    for (const line of snippet) {
+      console.log(`  ${line}`)
     }
-    if (trimmed.startsWith("DRY RUN")) continue
-    if (trimmed.startsWith("Title:")) {
-      console.log(`  ${UI.Style.TEXT_NORMAL_BOLD}${trimmed}${UI.Style.TEXT_NORMAL}`)
-    } else if (trimmed.startsWith("Tags:") || trimmed.startsWith("Category:") || trimmed.startsWith("Session:")) {
-      console.log(`  ${UI.Style.TEXT_DIM}${trimmed}${UI.Style.TEXT_NORMAL}`)
-    } else if (trimmed === "---" || trimmed.match(/^─+$/)) {
-      // skip dividers in content
-    } else {
-      console.log(`  ${trimmed}`)
+    if (bodyLines.length > 6) {
+      console.log(`  ${UI.Style.TEXT_DIM}... (${bodyLines.length - 6} more lines)${UI.Style.TEXT_NORMAL}`)
     }
   }
 
   UI.divider()
 
   // Confirm publish
-  console.log(`  ${UI.Style.TEXT_DIM}Press Enter to publish this post, or Esc to skip${UI.Style.TEXT_NORMAL}`)
-  const choice = await UI.waitEnter()
+  const choice = await UI.waitEnter("Press Enter to publish, or Esc to skip")
 
   if (choice === "escape") {
     await UI.typeText("Skipped. You can publish later with /publish in the app.")
     return
   }
 
-  // Publish
-  await UI.typeText("Publishing...", { charDelay: 20 })
+  // Publish with shimmer
+  const publishPromise = McpBridge.callTool("auto_post", { dry_run: false })
+  await shimmerLine("Publishing your post...", 1500)
+
   try {
-    const result = await McpBridge.callTool("auto_post", { dry_run: false })
+    const result = await publishPromise
     console.log("")
 
-    // Extract URL from result
+    // Extract URL and details from result
     const urlMatch = result.match(/(?:URL|View at|view at)[:\s]*(https?:\/\/\S+)/i)
     if (urlMatch) {
-      UI.success(`Published! View at: ${urlMatch[1]}`)
+      UI.success("Post published successfully!")
+      console.log("")
+      if (title) {
+        console.log(`  ${UI.Style.TEXT_NORMAL_BOLD}${title}${UI.Style.TEXT_NORMAL}`)
+      }
+      console.log(`  ${UI.Style.TEXT_HIGHLIGHT}${urlMatch[1]}${UI.Style.TEXT_NORMAL}`)
+      console.log("")
+      await UI.typeText("Your first post is live! Others can now read, comment, and vote on it.", { charDelay: 10 })
     } else {
+      UI.success("Post published!")
       // Fallback: show cleaned result
       const cleanResult = UI.cleanMarkdown(result)
       for (const line of cleanResult.split("\n").slice(0, 5)) {
@@ -164,8 +209,7 @@ async function aiConfigPrompt(): Promise<void> {
   console.log(`    ${UI.Style.TEXT_DIM}"Write a post about my React refactoring"${UI.Style.TEXT_NORMAL}`)
   console.log("")
 
-  console.log(`  ${UI.Style.TEXT_DIM}Press Enter to configure AI, or Esc to skip${UI.Style.TEXT_NORMAL}`)
-  const choice = await UI.waitEnter()
+  const choice = await UI.waitEnter("Press Enter to configure AI, or Esc to skip")
 
   if (choice === "escape") {
     console.log("")
@@ -179,21 +223,58 @@ async function aiConfigPrompt(): Promise<void> {
     return
   }
 
-  // AI config flow: URL → Key (reuses saveProvider from ai/configure.ts)
+  // AI config flow: URL → Key with ESC support
   console.log("")
-  const url = await UI.input(`  ${UI.Style.TEXT_NORMAL_BOLD}API URL${UI.Style.TEXT_NORMAL} ${UI.Style.TEXT_DIM}(or press Enter to skip):${UI.Style.TEXT_NORMAL} `)
-  const key = await UI.input(`  ${UI.Style.TEXT_NORMAL_BOLD}API Key:${UI.Style.TEXT_NORMAL} `)
+  console.log(`  ${UI.Style.TEXT_NORMAL_BOLD}API URL${UI.Style.TEXT_NORMAL} ${UI.Style.TEXT_DIM}(or press Enter to skip URL, Esc to cancel):${UI.Style.TEXT_NORMAL}`)
+  const urlResult = await UI.inputWithEscape(`  ${UI.Style.TEXT_HIGHLIGHT}❯ ${UI.Style.TEXT_NORMAL}`)
 
-  if (!key || key.length < 5) {
-    UI.warn("API key too short, skipping AI configuration.")
+  if (urlResult === null) {
+    // User pressed Esc
+    console.log("")
+    await UI.typeText("Skipped AI configuration. You can configure later with /ai in the app.")
+    return
+  }
+
+  const url = urlResult.trim()
+
+  console.log(`  ${UI.Style.TEXT_NORMAL_BOLD}API Key${UI.Style.TEXT_NORMAL} ${UI.Style.TEXT_DIM}(press Esc to cancel):${UI.Style.TEXT_NORMAL}`)
+  const keyResult = await UI.inputWithEscape(`  ${UI.Style.TEXT_HIGHLIGHT}❯ ${UI.Style.TEXT_NORMAL}`)
+
+  if (keyResult === null) {
+    // User pressed Esc
+    console.log("")
+    await UI.typeText("Skipped AI configuration. You can configure later with /ai in the app.")
+    return
+  }
+
+  const key = keyResult.trim()
+
+  // Both empty → friendly skip
+  if (!url && !key) {
+    console.log("")
+    UI.info("No AI configuration provided — skipping for now.")
+    await UI.typeText("You can configure AI later with /ai in the app.")
+    return
+  }
+
+  // Key empty but URL provided → friendly skip
+  if (!key) {
+    console.log("")
+    UI.info("No API key provided — skipping AI configuration.")
+    await UI.typeText("You can configure AI later with /ai in the app.")
+    return
+  }
+
+  if (key.length < 5) {
+    UI.warn("API key seems too short, skipping AI configuration.")
     await UI.typeText("You can configure AI later with /ai in the app.")
     return
   }
 
   try {
     const { saveProvider } = await import("../../ai/configure")
-    console.log(`  ${UI.Style.TEXT_DIM}Detecting API format...${UI.Style.TEXT_NORMAL}`)
-    const result = await saveProvider(url.trim(), key.trim())
+    await shimmerLine("Detecting API format...", 1500)
+    const result = await saveProvider(url, key)
     if (result.error) {
       UI.warn(result.error)
       await UI.typeText("You can try again later with /ai in the app.")
@@ -230,8 +311,7 @@ export const SetupCommand: CommandModule = {
       await UI.typeText("You may need to sign up or log in on the website first.", { charDelay: 10 })
       console.log("")
 
-      console.log(`  ${UI.Style.TEXT_DIM}Press Enter to open browser...${UI.Style.TEXT_NORMAL}`)
-      await UI.waitEnter()
+      await UI.waitEnter("Press Enter to open browser...")
 
       authenticated = await authBrowser()
     }
@@ -252,8 +332,7 @@ export const SetupCommand: CommandModule = {
     await UI.typeText("I'll scan your local IDE sessions to find interesting coding experiences.", { charDelay: 10 })
     console.log("")
 
-    console.log(`  ${UI.Style.TEXT_DIM}Press Enter to continue...${UI.Style.TEXT_NORMAL}`)
-    const scanChoice = await UI.waitEnter()
+    const scanChoice = await UI.waitEnter("Press Enter to continue, or Esc to skip")
 
     if (scanChoice === "enter") {
       await scanAndPublish()

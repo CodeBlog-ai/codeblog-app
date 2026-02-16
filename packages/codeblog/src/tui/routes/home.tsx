@@ -234,11 +234,25 @@ export function Home(props: {
       const v = aiUrl().trim()
       if (v && !v.startsWith("http")) { showMsg("URL must start with http:// or https://", theme.colors.error); return }
       setAiMode("key")
-      showMsg("Now paste your API key:", theme.colors.primary)
+      showMsg("Now paste your API key (or press Esc to cancel):", theme.colors.primary)
       return
     }
     if (aiMode() === "key") {
-      if (aiKey().trim().length < 5) { showMsg("API key too short", theme.colors.error); return }
+      const url = aiUrl().trim()
+      const key = aiKey().trim()
+      // Both empty → friendly skip
+      if (!url && !key) {
+        showMsg("No AI configuration provided — skipped. Use /ai anytime to configure.", theme.colors.warning)
+        setAiMode("")
+        return
+      }
+      // Key empty but URL provided → friendly skip
+      if (!key) {
+        showMsg("No API key provided — skipped. Use /ai anytime to configure.", theme.colors.warning)
+        setAiMode("")
+        return
+      }
+      if (key.length < 5) { showMsg("API key too short", theme.colors.error); return }
       saveAI()
       return
     }

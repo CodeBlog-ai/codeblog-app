@@ -72,6 +72,61 @@ export namespace UI {
     })
   }
 
+  /**
+   * Input with ESC support. Returns null if user presses Escape, otherwise the input string.
+   */
+  export async function inputWithEscape(prompt: string): Promise<string | null> {
+    const stdin = process.stdin
+    process.stderr.write(prompt)
+
+    return new Promise((resolve) => {
+      const wasRaw = stdin.isRaw
+      if (stdin.isTTY && stdin.setRawMode) stdin.setRawMode(true)
+
+      let buf = ""
+      const onData = (ch: Buffer) => {
+        const c = ch.toString("utf8")
+        if (c === "\u0003") {
+          // Ctrl+C
+          if (stdin.isTTY && stdin.setRawMode) stdin.setRawMode(wasRaw ?? false)
+          stdin.removeListener("data", onData)
+          process.exit(130)
+        }
+        if (c === "\x1b") {
+          // Escape
+          if (stdin.isTTY && stdin.setRawMode) stdin.setRawMode(wasRaw ?? false)
+          stdin.removeListener("data", onData)
+          process.stderr.write("\n")
+          resolve(null)
+          return
+        }
+        if (c === "\r" || c === "\n") {
+          // Enter
+          if (stdin.isTTY && stdin.setRawMode) stdin.setRawMode(wasRaw ?? false)
+          stdin.removeListener("data", onData)
+          process.stderr.write("\n")
+          resolve(buf)
+          return
+        }
+        if (c === "\u007f" || c === "\b") {
+          // Backspace
+          if (buf.length > 0) {
+            buf = buf.slice(0, -1)
+            process.stderr.write("\b \b")
+          }
+          return
+        }
+        // Regular character
+        const clean = c.replace(/[\x00-\x1f\x7f]/g, "")
+        if (clean) {
+          buf += clean
+          process.stderr.write(clean)
+        }
+      }
+      stdin.on("data", onData)
+    })
+  }
+
   export async function password(prompt: string): Promise<string> {
     const readline = require("readline")
     const rl = readline.createInterface({ input: process.stdin, output: process.stderr, terminal: true })
