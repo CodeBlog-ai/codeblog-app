@@ -5,12 +5,17 @@ const mockCallToolJSON = mock((name: string, args: Record<string, unknown>) =>
   Promise.resolve({ ok: true, tool: name }),
 )
 
+const mockListTools = mock(() =>
+  Promise.resolve({ tools: [] }),
+)
+
 mock.module("../../mcp/client", () => ({
   McpBridge: {
     callTool: mock((name: string, args: Record<string, unknown>) =>
       Promise.resolve(JSON.stringify({ ok: true, tool: name })),
     ),
     callToolJSON: mockCallToolJSON,
+    listTools: mockListTools,
     disconnect: mock(() => Promise.resolve()),
   },
 }))
@@ -25,10 +30,23 @@ function makeStreamResult() {
   }
 }
 
+function makeToolCallStreamResult() {
+  return {
+    fullStream: (async function* () {
+      yield { type: "tool-call", toolName: "scan_sessions", args: { limit: 5 } }
+      yield { type: "tool-result", toolName: "scan_sessions", result: { sessions: [] } }
+      yield { type: "text-delta", textDelta: "Done scanning." }
+    })(),
+  }
+}
+
+let streamFactory = () => makeStreamResult()
+
 mock.module("ai", () => ({
-  streamText: () => makeStreamResult(),
-  ModelMessage: class {},
+  streamText: () => streamFactory(),
+  stepCountIs: (n: number) => ({ type: "step-count", count: n }),
   tool: (config: any) => config,
+  jsonSchema: (schema: any) => schema,
 }))
 
 mock.module("../provider", () => ({
@@ -43,6 +61,7 @@ const { AIChat } = await import("../chat")
 describe("AIChat", () => {
   beforeEach(() => {
     mockCallToolJSON.mockClear()
+    streamFactory = () => makeStreamResult()
   })
 
   // ---------------------------------------------------------------------------
@@ -97,6 +116,56 @@ describe("AIChat", () => {
       { onFinish: () => {} },
     )
     // Should not throw — system messages are filtered
+  })
+
+  // ---------------------------------------------------------------------------
+  // stream() with tool calls
+  // ---------------------------------------------------------------------------
+
+  test("stream dispatches onToolCall and onToolResult callbacks", async () => {
+    streamFactory = () => makeToolCallStreamResult()
+
+    const toolCalls: Array<{ name: string; args: unknown }> = []
+    const toolResults: Array<{ name: string; result: unknown }> = []
+    const tokens: string[] = []
+
+    await AIChat.stream(
+      [{ role: "user", content: "scan my sessions" }],
+      {
+        onToken: (t) => tokens.push(t),
+        onToolCall: (name, args) => toolCalls.push({ name, args }),
+        onToolResult: (name, result) => toolResults.push({ name, result }),
+        onFinish: () => {},
+      },
+    )
+
+    expect(toolCalls).toEqual([{ name: "scan_sessions", args: { limit: 5 } }])
+    expect(toolResults).toEqual([{ name: "scan_sessions", result: { sessions: [] } }])
+    expect(tokens).toEqual(["Done scanning."])
+  })
+
+  // ---------------------------------------------------------------------------
+  // stream() error handling
+  // ---------------------------------------------------------------------------
+
+  test("stream calls onError when error event is received", async () => {
+    streamFactory = () => ({
+      fullStream: (async function* () {
+        yield { type: "error", error: new Error("test error") }
+      })(),
+    })
+
+    const errors: Error[] = []
+    await AIChat.stream(
+      [{ role: "user", content: "test" }],
+      {
+        onError: (err) => errors.push(err),
+        onFinish: () => {},
+      },
+    )
+
+    expect(errors).toHaveLength(1)
+    expect(errors[0]!.message).toBe("test error")
   })
 
   // ---------------------------------------------------------------------------

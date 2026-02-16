@@ -115,7 +115,9 @@ export namespace AIProvider {
     }
     const compatKey = await getApiKey("openai-compatible")
     if (compatKey) {
-      result["openai-compatible"] = { name: "OpenAI Compatible", models: [], hasKey: true }
+      const compatBase = await getBaseUrl("openai-compatible")
+      const remoteModels = compatBase ? await fetchRemoteModels(compatBase, compatKey) : []
+      result["openai-compatible"] = { name: "OpenAI Compatible", models: remoteModels, hasKey: true }
     }
     return result
   }
@@ -175,6 +177,26 @@ export namespace AIProvider {
         const clean = baseURL.replace(/\/+$/, "")
         opts.baseURL = clean.endsWith("/v1") ? clean : `${clean}/v1`
       }
+      // For openai-compatible providers, normalize request body for broader compatibility
+      if (pkg === "@ai-sdk/openai-compatible") {
+        opts.transformRequestBody = (body: Record<string, any>) => {
+          // Remove parallel_tool_calls — many proxies/providers don't support it
+          delete body.parallel_tool_calls
+
+          // Ensure all tool schemas have type: "object" (required by DeepSeek/Qwen/etc.)
+          if (Array.isArray(body.tools)) {
+            for (const t of body.tools) {
+              const params = t?.function?.parameters
+              if (params && !params.type) {
+                params.type = "object"
+                if (!params.properties) params.properties = {}
+              }
+            }
+          }
+
+          return body
+        }
+      }
       sdk = createFn(opts)
       sdkCache.set(cacheKey, sdk)
     }
@@ -186,6 +208,22 @@ export namespace AIProvider {
       return (sdk as any).languageModel(modelID)
     }
     return (sdk as any)(modelID)
+  }
+
+  async function fetchRemoteModels(base: string, key: string): Promise<string[]> {
+    try {
+      const clean = base.replace(/\/+$/, "")
+      const url = clean.endsWith("/v1") ? `${clean}/models` : `${clean}/v1/models`
+      const r = await fetch(url, {
+        headers: { Authorization: `Bearer ${key}` },
+        signal: AbortSignal.timeout(8000),
+      })
+      if (!r.ok) return []
+      const data = await r.json() as { data?: Array<{ id: string }> }
+      return data.data?.map((m) => m.id) ?? []
+    } catch {
+      return []
+    }
   }
 
   function noKeyError(providerID: string): Error {
@@ -224,6 +262,19 @@ export namespace AIProvider {
     for (const model of Object.values(BUILTIN_MODELS)) {
       const apiKey = await getApiKey(model.providerID)
       result.push({ model, hasKey: !!apiKey })
+    }
+    // Include remote models from openai-compatible provider
+    const compatKey = await getApiKey("openai-compatible")
+    const compatBase = await getBaseUrl("openai-compatible")
+    if (compatKey && compatBase) {
+      const remoteModels = await fetchRemoteModels(compatBase, compatKey)
+      for (const id of remoteModels) {
+        if (BUILTIN_MODELS[id]) continue
+        result.push({
+          model: { id, providerID: "openai-compatible", name: id, contextWindow: 0, outputTokens: 0 },
+          hasKey: true,
+        })
+      }
     }
     return result
   }

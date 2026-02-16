@@ -54,7 +54,8 @@ export function ModelPicker(props: { onDone: (model?: string) => void }) {
       }))
       if (items.length > 0) {
         setModels(items)
-        const curIdx = items.findIndex((m) => m.id === (cfg.model || AIProvider.DEFAULT_MODEL))
+        const modelId = cfg.model || AIProvider.DEFAULT_MODEL
+        const curIdx = items.findIndex((m) => m.id === modelId || `${m.provider}/${m.id}` === modelId)
         if (curIdx >= 0) setIdx(curIdx)
         setStatus(`${items.length} models loaded`)
       } else {
@@ -123,9 +124,11 @@ export function ModelPicker(props: { onDone: (model?: string) => void }) {
 
   async function save(id: string) {
     try {
+      const item = filtered().find((m) => m.id === id)
+      const saveId = item && item.provider === "openai-compatible" ? `openai-compatible/${id}` : id
       const { Config } = await import("../../config")
-      await Config.save({ model: id })
-      props.onDone(id)
+      await Config.save({ model: saveId })
+      props.onDone(saveId)
     } catch {
       props.onDone()
     }
@@ -187,7 +190,7 @@ export function ModelPicker(props: { onDone: (model?: string) => void }) {
                     <text fg={selected() ? "#ffffff" : theme.colors.textMuted}>
                       {" " + m.provider}
                     </text>
-                    {m.id === current() ? (
+                    {(m.id === current() || `${m.provider}/${m.id}` === current()) ? (
                       <text fg={selected() ? "#ffffff" : theme.colors.success}>{" ← current"}</text>
                     ) : null}
                   </box>

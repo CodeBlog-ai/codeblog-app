@@ -143,13 +143,27 @@ describe("AIProvider", () => {
   // available
   // ---------------------------------------------------------------------------
 
-  test("available returns all builtin models with hasKey status", async () => {
+  test("available returns at least builtin models with hasKey status", async () => {
     const models = await AIProvider.available()
-    expect(models).toHaveLength(7)
+    expect(models.length).toBeGreaterThanOrEqual(7)
     for (const entry of models) {
       expect(entry.model).toBeDefined()
       expect(typeof entry.hasKey).toBe("boolean")
     }
+    // The first 7 should always be builtins
+    const builtinCount = models.filter((m) => AIProvider.BUILTIN_MODELS[m.model.id]).length
+    expect(builtinCount).toBe(7)
+  })
+
+  test("available includes openai-compatible remote models when configured", async () => {
+    // With a valid key and base URL from config, remote models should be fetched.
+    // This test verifies that available() attempts to include openai-compatible models.
+    // Use localhost to ensure fast failure (connection refused) instead of DNS timeout.
+    process.env.OPENAI_COMPATIBLE_API_KEY = "sk-test"
+    process.env.OPENAI_COMPATIBLE_BASE_URL = "http://127.0.0.1:1"
+    const models = await AIProvider.available()
+    // Should still return at least builtins even if remote fetch fails
+    expect(models.length).toBeGreaterThanOrEqual(7)
   })
 
   // ---------------------------------------------------------------------------

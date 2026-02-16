@@ -156,14 +156,24 @@ export function Home(props: {
       const { AIChat } = await import("../../ai/chat")
       const { Config } = await import("../../config")
       const { AIProvider } = await import("../../ai/provider")
+      const { Log } = await import("../../util/log")
+      const sendLog = Log.create({ service: "home-send" })
       const cfg = await Config.load()
       const mid = cfg.model || AIProvider.DEFAULT_MODEL
       const allMsgs = [...prev, userMsg].filter((m) => m.role !== "tool").map((m) => ({ role: m.role as "user" | "assistant", content: m.content }))
       let full = ""
+      let hasToolCalls = false
+      let lastToolName = ""
+      let lastToolResult = ""
+      let summaryStreamActive = false
       abortCtrl = new AbortController()
+      sendLog.info("calling AIChat.stream", { model: mid, msgCount: allMsgs.length })
       await AIChat.stream(allMsgs, {
         onToken: (token) => { full += token; setStreamText(full) },
         onToolCall: (name) => {
+          hasToolCalls = true
+          lastToolName = name
+          sendLog.info("onToolCall", { name })
           // Save any accumulated text as assistant message before tool
           if (full.trim()) {
             setMessages((p) => [...p, { role: "assistant", content: full.trim() }])
@@ -172,7 +182,12 @@ export function Home(props: {
           }
           setMessages((p) => [...p, { role: "tool", content: TOOL_LABELS[name] || name, toolName: name, toolStatus: "running" }])
         },
-        onToolResult: (name) => {
+        onToolResult: (name, result) => {
+          sendLog.info("onToolResult", { name })
+          try {
+            const str = typeof result === "string" ? result : JSON.stringify(result)
+            lastToolResult = str.slice(0, 6000)
+          } catch { lastToolResult = "" }
           setMessages((p) => p.map((m) =>
             m.role === "tool" && m.toolName === name && m.toolStatus === "running"
               ? { ...m, toolStatus: "done" as const }
@@ -180,13 +195,55 @@ export function Home(props: {
           ))
         },
         onFinish: () => {
+          sendLog.info("onFinish", { fullLength: full.length, hasToolCalls, hasToolResult: !!lastToolResult })
           if (full.trim()) {
             setMessages((p) => [...p, { role: "assistant", content: full.trim() }])
+            setStreamText(""); setStreaming(false)
+            saveChat()
+          } else if (hasToolCalls && lastToolResult) {
+            // Tool executed but model didn't summarize — send a follow-up request
+            // to have the model produce a natural-language summary
+            sendLog.info("auto-summarizing tool result", { tool: lastToolName })
+            full = ""
+            setStreamText("")
+            const summaryMsgs = [
+              ...allMsgs,
+              { role: "assistant" as const, content: `I used the ${lastToolName} tool. Here are the results:\n${lastToolResult}` },
+              { role: "user" as const, content: "Please summarize these results in a helpful, natural way." },
+            ]
+            // NOTE: intentionally not awaited — the outer await resolves here,
+            // but streaming state is managed by the inner callbacks.
+            // The finally block must NOT reset streaming in this path.
+            summaryStreamActive = true
+            AIChat.stream(summaryMsgs, {
+              onToken: (token) => { full += token; setStreamText(full) },
+              onFinish: () => {
+                if (full.trim()) {
+                  setMessages((p) => [...p, { role: "assistant", content: full.trim() }])
+                } else {
+                  setMessages((p) => [...p, { role: "assistant", content: "(Tool executed — model did not respond)" }])
+                }
+                setStreamText(""); setStreaming(false)
+                saveChat()
+              },
+              onError: (err) => {
+                sendLog.info("summary stream error", { message: err.message })
+                setMessages((p) => [...p, { role: "assistant", content: `Tool result received but summary failed: ${err.message}` }])
+                setStreamText(""); setStreaming(false)
+                saveChat()
+              },
+            }, mid, abortCtrl?.signal)
+          } else if (hasToolCalls) {
+            setMessages((p) => [...p, { role: "assistant", content: "(Tool executed — no response from model)" }])
+            setStreamText(""); setStreaming(false)
+            saveChat()
+          } else {
+            setStreamText(""); setStreaming(false)
+            saveChat()
           }
-          setStreamText(""); setStreaming(false)
-          saveChat()
         },
         onError: (err) => {
+          sendLog.info("onError", { message: err.message })
           setMessages((p) => {
             // Mark any running tools as error
             const updated = p.map((m) =>
@@ -200,13 +257,19 @@ export function Home(props: {
           saveChat()
         },
       }, mid, abortCtrl.signal)
+      sendLog.info("AIChat.stream returned normally")
       abortCtrl = undefined
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
+      // Can't use sendLog here because it might not be in scope
       setMessages((p) => [...p, { role: "assistant", content: `Error: ${msg}` }])
-      setStreamText("")
-      setStreaming(false)
       saveChat()
+    } finally {
+      // Clean up streaming state — but NOT if a summary stream is still running
+      if (!summaryStreamActive) {
+        setStreamText("")
+        setStreaming(false)
+      }
     }
   }
 
@@ -392,7 +455,7 @@ export function Home(props: {
 
       {/* When chatting: messages fill the space */}
       <Show when={chatting()}>
-        <box flexDirection="column" flexGrow={1} paddingTop={1} overflow="scroll">
+        <scrollbox flexGrow={1} paddingTop={1} stickyScroll={true} stickyStart="bottom">
           <For each={messages()}>
             {(msg) => (
               <box flexShrink={0}>
@@ -402,7 +465,7 @@ export function Home(props: {
                     <text fg={theme.colors.primary} flexShrink={0}>
                       <span style={{ bold: true }}>{"❯ "}</span>
                     </text>
-                    <text fg={theme.colors.text}>
+                    <text fg={theme.colors.text} wrapMode="word" flexGrow={1} flexShrink={1}>
                       <span style={{ bold: true }}>{msg.content}</span>
                     </text>
                   </box>
@@ -424,23 +487,27 @@ export function Home(props: {
                     <text fg={theme.colors.success} flexShrink={0}>
                       <span style={{ bold: true }}>{"◆ "}</span>
                     </text>
-                    <text fg={theme.colors.text}>{msg.content}</text>
+                    <text fg={theme.colors.text} wrapMode="word" flexGrow={1} flexShrink={1}>{msg.content}</text>
                   </box>
                 </Show>
               </box>
             )}
           </For>
-          <Show when={streaming()}>
-            <box flexDirection="row" paddingBottom={1} flexShrink={0}>
-              <text fg={theme.colors.success} flexShrink={0}>
-                <span style={{ bold: true }}>{"◆ "}</span>
-              </text>
-              <text fg={streamText() ? theme.colors.text : theme.colors.textMuted}>
-                {streamText() || shimmerText()}
-              </text>
-            </box>
-          </Show>
-        </box>
+          <box
+            flexDirection="row"
+            paddingBottom={streaming() ? 1 : 0}
+            flexShrink={0}
+            height={streaming() ? undefined : 0}
+            overflow="hidden"
+          >
+            <text fg={theme.colors.success} flexShrink={0}>
+              <span style={{ bold: true }}>{streaming() ? "◆ " : ""}</span>
+            </text>
+            <text fg={streamText() ? theme.colors.text : theme.colors.textMuted} wrapMode="word" flexGrow={1} flexShrink={1}>
+              {streaming() ? (streamText() || shimmerText()) : ""}
+            </text>
+          </box>
+        </scrollbox>
       </Show>
 
       {/* Spacer when no chat and no autocomplete */}

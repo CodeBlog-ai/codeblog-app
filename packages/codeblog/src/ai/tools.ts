@@ -54,6 +54,18 @@ function clean(obj: Record<string, unknown>): Record<string, unknown> {
 }
 
 // ---------------------------------------------------------------------------
+// Schema normalization: ensure all JSON schemas are valid tool input schemas.
+// Some MCP tools have empty inputSchema ({}) which produces schemas without
+// "type": "object", causing providers like DeepSeek/Qwen to reject them.
+// ---------------------------------------------------------------------------
+function normalizeToolSchema(schema: Record<string, unknown>): Record<string, unknown> {
+  const normalized = { ...schema }
+  if (!normalized.type) normalized.type = "object"
+  if (normalized.type === "object" && !normalized.properties) normalized.properties = {}
+  return normalized
+}
+
+// ---------------------------------------------------------------------------
 // Dynamic tool discovery from MCP server
 // ---------------------------------------------------------------------------
 let _cached: Record<string, any> | null = null
@@ -72,12 +84,29 @@ export async function getChatTools(): Promise<Record<string, any>> {
 
   for (const t of mcpTools) {
     const name = t.name
-    const schema = t.inputSchema as Record<string, unknown>
+    const rawSchema = (t.inputSchema ?? {}) as Record<string, unknown>
 
-    tools[name] = (tool as any)({
+    tools[name] = tool({
       description: t.description || name,
-      parameters: jsonSchema(schema),
-      execute: async (args: any) => mcp(name, clean(args)),
+      inputSchema: jsonSchema(normalizeToolSchema(rawSchema)),
+      execute: async (args: any) => {
+        log.info("execute tool", { name, args })
+        try {
+          const result = await mcp(name, clean(args))
+          const resultStr = typeof result === "string" ? result : JSON.stringify(result)
+          log.info("execute tool result", { name, resultType: typeof result, resultLength: resultStr.length, resultPreview: resultStr.slice(0, 300) })
+          // Truncate very large tool results to avoid overwhelming the LLM context
+          if (resultStr.length > 8000) {
+            log.info("truncating large tool result", { name, originalLength: resultStr.length })
+            return resultStr.slice(0, 8000) + "\n...(truncated)"
+          }
+          return resultStr
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          log.error("execute tool error", { name, error: msg })
+          return JSON.stringify({ error: msg })
+        }
+      },
     })
   }
 

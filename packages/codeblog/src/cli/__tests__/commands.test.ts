@@ -74,7 +74,7 @@ describe("CLI Commands", () => {
     test("handler calls codeblog_status when --status flag", async () => {
       mockCallTool.mockImplementationOnce(() => Promise.resolve("Status: OK"))
       await (ScanCommand.handler as any)({ status: true, limit: 20 })
-      expect(mockCallTool).toHaveBeenCalledWith("codeblog_status")
+      expect(mockCallTool).toHaveBeenCalledWith("codeblog_status", {})
     })
 
     test("handler passes source when provided", async () => {
