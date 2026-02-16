@@ -17,7 +17,22 @@ export const UpdateCommand: CommandModule = {
     UI.info(`Current version: v${current}`)
     UI.info("Checking for updates...")
 
-    const res = await fetch("https://registry.npmjs.org/codeblog-app/latest")
+    const checkController = new AbortController()
+    const checkTimeout = setTimeout(() => checkController.abort(), 10_000)
+    let res: Response
+    try {
+      res = await fetch("https://registry.npmjs.org/codeblog-app/latest", { signal: checkController.signal })
+    } catch (e: any) {
+      clearTimeout(checkTimeout)
+      if (e.name === "AbortError") {
+        UI.error("Version check timed out (10s). Please check your network and try again.")
+      } else {
+        UI.error(`Failed to check for updates: ${e.message}`)
+      }
+      process.exitCode = 1
+      return
+    }
+    clearTimeout(checkTimeout)
     if (!res.ok) {
       UI.error("Failed to check for updates")
       process.exitCode = 1
@@ -46,16 +61,36 @@ export const UpdateCommand: CommandModule = {
     const tmp = path.join(tmpdir, `codeblog-update-${Date.now()}`)
     await fs.mkdir(tmp, { recursive: true })
 
+    UI.info("Downloading...")
     const tgz = path.join(tmp, "pkg.tgz")
-    const dlRes = await fetch(url)
+    const dlController = new AbortController()
+    const dlTimeout = setTimeout(() => dlController.abort(), 60_000)
+    let dlRes: Response
+    try {
+      dlRes = await fetch(url, { signal: dlController.signal })
+    } catch (e: any) {
+      clearTimeout(dlTimeout)
+      await fs.rm(tmp, { recursive: true, force: true }).catch(() => {})
+      if (e.name === "AbortError") {
+        UI.error("Download timed out (60s). Please check your network and try again.")
+      } else {
+        UI.error(`Download failed: ${e.message}`)
+      }
+      process.exitCode = 1
+      return
+    }
+    clearTimeout(dlTimeout)
     if (!dlRes.ok) {
-      UI.error(`Failed to download update for ${platform}`)
+      UI.error(`Failed to download update for ${platform} (HTTP ${dlRes.status})`)
+      await fs.rm(tmp, { recursive: true, force: true }).catch(() => {})
       process.exitCode = 1
       return
     }
 
-    await Bun.write(tgz, dlRes)
+    const arrayBuf = await dlRes.arrayBuffer()
+    await fs.writeFile(tgz, Buffer.from(arrayBuf))
 
+    UI.info("Extracting...")
     const proc = Bun.spawn(["tar", "-xzf", tgz, "-C", tmp], { stdout: "ignore", stderr: "ignore" })
     await proc.exited
 
@@ -63,12 +98,22 @@ export const UpdateCommand: CommandModule = {
     const ext = os === "windows" ? ".exe" : ""
     const src = path.join(tmp, "package", "bin", `codeblog${ext}`)
 
+    UI.info("Installing...")
+    // On macOS/Linux, remove the running binary first to avoid ETXTBSY
+    if (os !== "windows") {
+      try {
+        await fs.unlink(bin)
+      } catch {
+        // ignore if removal fails
+      }
+    }
     await fs.copyFile(src, bin)
     if (os !== "windows") {
       await fs.chmod(bin, 0o755)
     }
     if (os === "darwin") {
-      Bun.spawn(["codesign", "--sign", "-", "--force", bin], { stdout: "ignore", stderr: "ignore" })
+      const cs = Bun.spawn(["codesign", "--sign", "-", "--force", bin], { stdout: "ignore", stderr: "ignore" })
+      await cs.exited
     }
 
     await fs.rm(tmp, { recursive: true, force: true })
