@@ -105,13 +105,28 @@ cd packages/util && bun test           # 工具包测试
 
 - 多 provider 支持（OpenAI、Anthropic、Google、Groq、xAI 等 20+）
 - 配置存储在 `~/.codeblog/config.json`
-- 聊天工具定义在 `src/ai/tools.ts`（使用 Vercel AI SDK 的 `tool()` 函数）
+- **工具动态发现**：`src/ai/tools.ts` 的 `getChatTools()` 在运行时调用 MCP 服务器的 `listTools()` 自动获取所有工具定义（名称、描述、参数 schema），无需手动维护工具列表
+- `TOOL_LABELS`（同文件）是 TUI 中工具执行时的显示文案，作为静态 fallback 保留。新工具未配置 label 时会 fallback 显示工具名
+- 工具通过 Vercel AI SDK 的 `jsonSchema()` 包装 MCP 返回的 JSON Schema，再传给 `streamText()`
 
 ### Scanner（IDE 扫描器）
 
 - 9 个扫描器在 `src/scanner/` 下，每个实现 `Scanner` 接口
 - 通过 `src/scanner/registry.ts` 注册
 - `src/scanner/analyzer.ts` 分析扫描结果生成摘要
+
+## MCP 工具维护规范
+
+**MCP 工具（新增/修改/删除）只需要改 `codeblog` 仓库的 `mcp-server/src/tools/`，本仓库不需要任何代码改动。**
+
+CLI 通过 `getChatTools()` 在运行时调用 MCP 的 `listTools()` 动态发现所有工具。工具的名称、描述、参数 schema 全部来自 MCP 服务器，不在本仓库维护。
+
+### 什么时候需要改本仓库
+
+- MCP 工具相关：**不需要改**（自动发现）
+- 可选：在 `src/ai/tools.ts` 的 `TOOL_LABELS` 中为新工具添加 TUI 显示文案（不加也能正常工作）
+- API 接口变更（`/api/v1/*`）：需要同步改 `src/api/` 下的 HTTP 客户端
+- CLI 命令、TUI 界面、AI 提示词等：正常在本仓库改
 
 ## ⚠️ 发布工作流（必须遵守）
 
@@ -166,7 +181,8 @@ CLI 通过 `curl -fsSL https://codeblog.ai/install.sh | bash` 安装，依赖以
 ### 完成工作后的检查清单
 
 - [ ] 如果 `codeblog` 仓库的 MCP 有改动 → 先发布 `codeblog-mcp`
-- [ ] 如果 MCP 发布了新版本 → 必须同步更新本仓库并发布
+- [ ] 如果 MCP 只是新增/修改工具 → CLI 自动发现，**不需要发布本仓库**
+- [ ] 如果 MCP 有 breaking change（如 SDK 大版本升级）或本仓库有改动 → 发布本仓库
 - [ ] 发布本仓库时 → 必须构建 5 个平台二进制并一起发布
 - [ ] 验证 `npm view codeblog-app version` 版本号正确
 - [ ] 验证 curl 安装脚本能获取到最新版本

@@ -23,6 +23,13 @@ This repo (`codeblog-app`) is the **CLI / TUI client**. It works alongside a sib
 - 用户认证使用 JWT cookie（OAuth 登录后获取）
 - API 基础 URL 可通过 `codeblog config` 命令配置
 
+### MCP 工具维护
+
+**MCP 工具只在 `codeblog` 仓库的 `mcp-server/src/tools/` 维护。** 本仓库通过 `getChatTools()`（`src/ai/tools.ts`）在运行时调用 MCP 的 `listTools()` 动态发现所有工具，不需要手动同步工具定义。
+
+- 新增/修改 MCP 工具 → 只改 `codeblog` 仓库，本仓库零改动
+- 可选：在 `TOOL_LABELS`（`src/ai/tools.ts`）中添加 TUI 显示文案
+
 ## Development Environment
 
 ### Prerequisites
@@ -217,7 +224,8 @@ curl -fsSL https://registry.npmjs.org/codeblog-app/latest | grep -o '"version":"
 ### 完成工作后的检查清单
 
 - [ ] `codeblog` 仓库 MCP 有改动 → 先发布 `codeblog-mcp`
-- [ ] MCP 发布了新版本 → 必须同步更新本仓库并发布
+- [ ] MCP 只是新增/修改工具 → CLI 自动发现，**不需要发布本仓库**
+- [ ] MCP 有 breaking change 或本仓库有改动 → 发布本仓库
 - [ ] 发布本仓库 → 必须构建 5 个平台二进制并一起发布
 - [ ] `npm view codeblog-app version` 版本号正确
 - [ ] curl 安装脚本能获取到最新版本

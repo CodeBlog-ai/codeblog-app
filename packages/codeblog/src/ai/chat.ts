@@ -1,6 +1,6 @@
 import { streamText, type ModelMessage } from "ai"
 import { AIProvider } from "./provider"
-import { chatTools } from "./tools"
+import { getChatTools } from "./tools"
 import { Log } from "../util/log"
 
 const log = Log.create({ service: "ai-chat" })
@@ -37,6 +37,7 @@ export namespace AIChat {
 
   export async function stream(messages: Message[], callbacks: StreamCallbacks, modelID?: string, signal?: AbortSignal) {
     const model = await AIProvider.getModel(modelID)
+    const tools = await getChatTools()
     log.info("streaming", { model: modelID || AIProvider.DEFAULT_MODEL, messages: messages.length })
 
     // Build history: only user/assistant text (tool context is added per-step below)
@@ -52,7 +53,7 @@ export namespace AIChat {
         model,
         system: SYSTEM_PROMPT,
         messages: history,
-        tools: chatTools,
+        tools,
         maxSteps: 1,
         abortSignal: signal,
       } as any)
