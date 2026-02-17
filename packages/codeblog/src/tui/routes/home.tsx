@@ -163,11 +163,18 @@ export function Home(props: {
   })
 
   usePaste((evt) => {
-    const text = evt.text.replace(/[\n\r]/g, "").trim()
+    // For URL/key modes, strip newlines; for normal input, preserve them
+    if (aiMode() === "url" || aiMode() === "key") {
+      const text = evt.text.replace(/[\n\r]/g, "").trim()
+      if (!text) return
+      evt.preventDefault()
+      if (aiMode() === "url") { setAiUrl(text); return }
+      setAiKey(text)
+      return
+    }
+    const text = evt.text.replace(/\r\n/g, "\n").replace(/\r/g, "\n")
     if (!text) return
     evt.preventDefault()
-    if (aiMode() === "url") { setAiUrl(text); return }
-    if (aiMode() === "key") { setAiKey(text); return }
     setInput((s) => s + text)
   })
 
@@ -444,6 +451,7 @@ export function Home(props: {
     if (evt.name === "escape" && chatting() && !streaming()) { clearChat(); evt.preventDefault(); return }
 
     if (evt.name === "return" && !evt.shift) { handleSubmit(); evt.preventDefault(); return }
+    if (evt.name === "return" && evt.shift) { setInput((s) => s + "\n"); evt.preventDefault(); return }
     if (evt.name === "backspace") { setInput((s) => s.slice(0, -1)); setSelectedIdx(0); evt.preventDefault(); return }
     if (evt.sequence && evt.sequence.length >= 1 && !evt.ctrl && !evt.meta) {
       const clean = evt.sequence.replace(/[\x00-\x1f\x7f]/g, "")
@@ -632,10 +640,17 @@ export function Home(props: {
               </box>
             </Show>
             {/* Input line with blinking cursor */}
-            <box flexDirection="row">
-              <text fg={theme.colors.primary}><span style={{ bold: true }}>{"❯ "}</span></text>
-              <text fg={theme.colors.input}>{input()}</text>
-              <text fg={theme.colors.cursor} style={{ bold: true }}>{"█"}</text>
+            <box flexDirection="column">
+              {(() => {
+                const lines = input().split("\n")
+                return lines.map((line, i) => (
+                  <box flexDirection="row">
+                    <text fg={theme.colors.primary}><span style={{ bold: true }}>{i === 0 ? "❯ " : "  "}</span></text>
+                    <text fg={theme.colors.input}>{line}</text>
+                    {i === lines.length - 1 && <text fg={theme.colors.cursor} style={{ bold: true }}>{"█"}</text>}
+                  </box>
+                ))
+              })()}
             </box>
           </box>
         </Show>
