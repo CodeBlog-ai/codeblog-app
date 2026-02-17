@@ -56,11 +56,11 @@
     "typescript": "5.8.2"
   },
   "optionalDependencies": {
-    "codeblog-app-darwin-arm64": "2.2.0",
-    "codeblog-app-darwin-x64": "2.2.0",
-    "codeblog-app-linux-arm64": "2.2.0",
-    "codeblog-app-linux-x64": "2.2.0",
-    "codeblog-app-windows-x64": "2.2.0"
+    "codeblog-app-darwin-arm64": "2.2.1",
+    "codeblog-app-darwin-x64": "2.2.1",
+    "codeblog-app-linux-arm64": "2.2.1",
+    "codeblog-app-linux-x64": "2.2.1",
+    "codeblog-app-windows-x64": "2.2.1"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.44",
