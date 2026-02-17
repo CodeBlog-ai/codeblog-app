@@ -139,6 +139,77 @@ try {
   console.log(`     gh release create ${tag} dist/release/codeblog-${version}-*.*`)
 }
 
+// ─── Step 7: Post-release verification ──────────
+console.log("\n7. Post-release verification...")
+
+// 7a. Verify npm registry has the new version
+const maxRetries = 10
+let npmVerified = false
+for (let i = 1; i <= maxRetries; i++) {
+  try {
+    const res = await fetch("https://registry.npmjs.org/codeblog-app/latest")
+    const data = await res.json() as { version: string }
+    if (data.version === version) {
+      console.log(`   ✓ npm registry: codeblog-app@${version}`)
+      npmVerified = true
+      break
+    }
+    console.log(`   ⏳ npm registry shows ${data.version}, waiting... (${i}/${maxRetries})`)
+  } catch {
+    console.log(`   ⏳ npm registry check failed, retrying... (${i}/${maxRetries})`)
+  }
+  await Bun.sleep(3000)
+}
+if (!npmVerified) {
+  console.log("   ⚠ npm registry not yet updated — may take a few minutes to propagate")
+}
+
+// 7b. Verify install.sh would fetch correct version
+try {
+  const res = await fetch("https://registry.npmjs.org/codeblog-app/latest")
+  const data = await res.json() as { version: string }
+  if (data.version === version) {
+    console.log(`   ✓ install.sh (codeblog.ai/install.sh) will install v${version}`)
+  } else {
+    console.log(`   ⚠ install.sh would install v${data.version} (expected v${version})`)
+  }
+} catch {
+  console.log("   ⚠ Could not verify install.sh version")
+}
+
+// 7c. Verify platform packages
+for (const p of platforms) {
+  try {
+    const res = await fetch(`https://registry.npmjs.org/codeblog-app-${p}/latest`)
+    const data = await res.json() as { version: string }
+    if (data.version === version) {
+      console.log(`   ✓ codeblog-app-${p}@${version}`)
+    } else {
+      console.log(`   ⚠ codeblog-app-${p}@${data.version} (expected ${version})`)
+    }
+  } catch {
+    console.log(`   ⚠ Could not verify codeblog-app-${p}`)
+  }
+}
+
+// ─── Step 8: Cleanup build artifacts ────────────
+console.log("\n8. Cleaning up build artifacts...")
+const distDir = path.join(dir, "dist")
+if (fs.existsSync(distDir)) {
+  fs.rmSync(distDir, { recursive: true, force: true })
+  console.log("   ✓ dist/ removed")
+}
+const tsBuildInfo = path.join(dir, "tsconfig.tsbuildinfo")
+if (fs.existsSync(tsBuildInfo)) {
+  fs.rmSync(tsBuildInfo)
+  console.log("   ✓ tsconfig.tsbuildinfo removed")
+}
+const rootTsBuildInfo = path.join(root, "tsconfig.tsbuildinfo")
+if (fs.existsSync(rootTsBuildInfo)) {
+  fs.rmSync(rootTsBuildInfo)
+  console.log("   ✓ root tsconfig.tsbuildinfo removed")
+}
+
 // ─── Done ────────────────────────────────────────
 console.log("\n" + "─".repeat(50))
 console.log(`\n  ✅ codeblog-app@${version} released!`)
@@ -147,4 +218,7 @@ console.log("  Published:")
 console.log(`    npm: codeblog-app@${version} + ${platforms.length} platform packages`)
 console.log(`    git: ${tag} (annotated tag)`)
 console.log(`    gh:  https://github.com/CodeBlog-ai/codeblog-app/releases/tag/${tag}`)
+console.log("")
+console.log("  Install:")
+console.log("    curl -fsSL https://codeblog.ai/install.sh | bash")
 console.log("")
