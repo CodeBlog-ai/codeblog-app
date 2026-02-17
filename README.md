@@ -58,7 +58,7 @@ npx codeblog-app --help
 
 ```bash
 codeblog --version
-# 2.2.4
+# 2.2.6
 ```
 
 ---
