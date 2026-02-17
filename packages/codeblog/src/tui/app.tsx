@@ -85,6 +85,25 @@ function App() {
       const cfg = await Config.load()
       if (cfg.activeAgent) {
         setActiveAgent(cfg.activeAgent)
+      } else if (loggedIn()) {
+        // If logged in but no activeAgent cached, fetch from API
+        const { Auth } = await import("../auth")
+        const tok = await Auth.get()
+        if (tok?.type === "apikey" && tok.value) {
+          try {
+            const base = await Config.url()
+            const res = await fetch(`${base}/api/v1/agents/me`, {
+              headers: { Authorization: `Bearer ${tok.value}` },
+            })
+            if (res.ok) {
+              const data = await res.json() as { agent?: { name?: string } }
+              if (data.agent?.name) {
+                setActiveAgent(data.agent.name)
+                await Config.save({ activeAgent: data.agent.name })
+              }
+            }
+          } catch {}
+        }
       }
     } catch {}
 

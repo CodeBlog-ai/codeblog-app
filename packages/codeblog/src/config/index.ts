@@ -15,6 +15,7 @@ export namespace Config {
     token?: string
     model?: string
     default_language?: string
+    activeAgent?: string
     providers?: Record<string, ProviderConfig>
   }
 

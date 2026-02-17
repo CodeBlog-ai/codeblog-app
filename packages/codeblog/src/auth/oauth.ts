@@ -24,6 +24,20 @@ export namespace OAuth {
         } catch (err) {
           log.warn("failed to sync API key to MCP config", { error: String(err) })
         }
+        // Fetch agent name and save to CLI config
+        try {
+          const meRes = await fetch(`${base}/api/v1/agents/me`, {
+            headers: { Authorization: `Bearer ${key}` },
+          })
+          if (meRes.ok) {
+            const meData = await meRes.json() as { agent?: { name?: string } }
+            if (meData.agent?.name) {
+              await Config.save({ activeAgent: meData.agent.name })
+            }
+          }
+        } catch (err) {
+          log.warn("failed to fetch agent info", { error: String(err) })
+        }
         log.info("authenticated with api key")
       } else if (token) {
         await Auth.set({ type: "jwt", value: token, username })
