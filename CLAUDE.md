@@ -41,7 +41,7 @@ codeblog-app/
 │   │   └── tsconfig.json  # jsx: preserve + jsxImportSource: solid-js
 │   ├── sdk/               # @codeblog-ai/sdk — API 类型定义 + 客户端
 │   └── util/              # @codeblog-ai/util — 通用工具函数
-├── scripts/               # build, clean, release 脚本
+├── scripts/               # build, clean 脚本（发版用 packages/codeblog/script/release.ts）
 ├── turbo.json             # Turborepo 配置
 └── package.json           # workspace root
 ```
@@ -128,62 +128,48 @@ CLI 通过 `getChatTools()` 在运行时调用 MCP 的 `listTools()` 动态发�
 - API 接口变更（`/api/v1/*`）：需要同步改 `src/api/` 下的 HTTP 客户端
 - CLI 命令、TUI 界面、AI 提示词等：正常在本仓库改
 
-## ⚠️ 发布工作流（必须遵守）
+## 发版流程（必须遵守）
 
-CodeBlog 由两个仓库组成，发布有严格的先后顺序。**每次完成功能开发后，必须检查并执行发布流程。**
+本仓库和 `codeblog` 仓库（MCP 服务器）有依赖关系：`codeblog-app` 依赖 `codeblog-mcp`。
 
-### 仓库关系
+**规则：如果 MCP 有改动，必须先发 MCP，再发 CLI。**
 
-| 仓库 | 本地路径 | npm 包名 |
-|------|---------|----------|
-| `codeblog` | `/Users/zhaoyifei/VibeCodingWork/codeblog` | `codeblog-mcp`（MCP 服务器） |
-| `codeblog-app` | `/Users/zhaoyifei/VibeCodingWork/codeblog-app` | `codeblog-app` + 5 个平台二进制包 |
+### 发布 CLI 客户端
 
-### 发布顺序（必须按此顺序）
+**唯一正确的方式——一条命令完成所有操作：**
 
-1. **MCP 服务器先发布**（`codeblog` 仓库）
-   ```bash
-   cd /Users/zhaoyifei/VibeCodingWork/codeblog/mcp-server
-   # 更新 version → npm run build → npm publish --access public
-   npm view codeblog-mcp version  # 验证
-   ```
+```bash
+bun run release 2.3.0       # 从仓库根目录执行，替换为目标版本号
+```
 
-2. **CLI 客户端后发布**（本仓库）
-   ```bash
-   cd packages/codeblog
-   # 1. 更新 package.json version
-   # 2. 构建 5 个平台二进制 + 发布（一条命令）
-   bun run script/build.ts --publish
-   # 3. 清理构建产物
-   rm -rf dist/
-   # 4. 恢复 bun.lock
-   cd ../.. && git checkout -- bun.lock
-   ```
-   发布后验证：`npm view codeblog-app version`
+release 脚本（`packages/codeblog/script/release.ts`）自动执行：
+1. 更新 `package.json` 版本号 + `optionalDependencies` 版本
+2. 更新 README.md、CHANGELOG.md
+3. 构建 5 个平台二进制（darwin-arm64、darwin-x64、linux-arm64、linux-x64、windows-x64）
+4. 发布 6 个 npm 包（5 平台包 + 1 主包）
+5. Git commit + tag（`v2.3.0`）+ push
+6. 创建 GitHub Release（附带二进制下载）
 
-3. **验证 curl 安装**
-   ```bash
-   curl -fsSL https://registry.npmjs.org/codeblog-app/latest | grep -o '"version":"[^"]*"'
-   ```
+### 发布 MCP 服务器（在 codeblog 仓库操作）
 
-### 5 个平台二进制包
+```bash
+cd /Users/zhaoyifei/VibeCodingWork/codeblog/mcp-server
+npm run release -- 2.2.0    # 替换为目标版本号
+```
 
-CLI 通过 `curl -fsSL https://codeblog.ai/install.sh | bash` 安装，依赖以下 npm 平台包：
+### 严禁的操作
 
-- `codeblog-app-darwin-arm64`（macOS Apple Silicon）
-- `codeblog-app-darwin-x64`（macOS Intel）
-- `codeblog-app-linux-arm64`（Linux ARM64）
-- `codeblog-app-linux-x64`（Linux x64）
-- `codeblog-app-windows-x64`（Windows x64）
+- **不要**手动改 `package.json` 版本号后直接 `npm publish`
+- **不要**只发布主包不发布平台二进制包
+- **不要**使用根目录的 `scripts/build.ts` 来做发版构建（那是开发构建用的）
+- **不要**跳过 release 脚本手动创建 git tag
 
-**由 `bun run script/build.ts --publish` 一并构建和发布，不要遗漏。**
+### 脚本说明
 
-### 完成工作后的检查清单
-
-- [ ] 如果 `codeblog` 仓库的 MCP 有改动 → 先发布 `codeblog-mcp`
-- [ ] 如果 MCP 只是新增/修改工具 → CLI 自动发现，**不需要发布本仓库**
-- [ ] 如果 MCP 有 breaking change（如 SDK 大版本升级）或本仓库有改动 → 发布本仓库
-- [ ] 发布本仓库时 → 必须构建 5 个平台二进制并一起发布
-- [ ] 验证 `npm view codeblog-app version` 版本号正确
-- [ ] 验证 curl 安装脚本能获取到最新版本
-- [ ] 清理本地 `dist/`，恢复 `bun.lock`
+| 脚本 | 用途 |
+|------|------|
+| `packages/codeblog/script/release.ts` | **发版脚本**（唯一正确入口） |
+| `packages/codeblog/script/build.ts` | 跨平台构建（release 脚本内部调用） |
+| `packages/codeblog/script/dev.ts` | 本地开发构建（编译到 `~/.local/bin/codeblog`） |
+| `scripts/build.ts` | 单平台开发构建（非发版用） |
+| `scripts/clean.ts` | 清理构建产物 |
