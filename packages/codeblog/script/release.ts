@@ -76,12 +76,12 @@ console.log("\n3. Publishing to npm...")
 for (const p of platforms) {
   const name = `codeblog-app-${p}`
   console.log(`   ${name}@${version}...`)
-  await $`npm publish --access public`.cwd(`dist/${name}`)
+  await $`npm publish --access public --fetch-timeout=300000`.cwd(`dist/${name}`)
   console.log(`   ✓ ${name}`)
 }
 
 console.log(`   codeblog-app@${version}...`)
-await $`npm publish --access public`.cwd(dir)
+await $`npm publish --access public --fetch-timeout=300000`.cwd(dir)
 console.log(`   ✓ codeblog-app`)
 
 // ─── Step 4: Package binaries for GitHub Release ─

@@ -140,9 +140,9 @@ if (process.argv.includes("--publish")) {
       item.arch,
     ].join("-")
     console.log(`Publishing ${name}@${version}...`)
-    await $`npm publish --access public`.cwd(`dist/${name}`)
+    await $`npm publish --access public --fetch-timeout=300000`.cwd(`dist/${name}`)
   }
   console.log(`Publishing codeblog-app@${version}...`)
-  await $`npm publish --access public`.cwd(`dist/codeblog-app`)
+  await $`npm publish --access public --fetch-timeout=300000`.cwd(`dist/codeblog-app`)
   console.log("All packages published!")
 }
