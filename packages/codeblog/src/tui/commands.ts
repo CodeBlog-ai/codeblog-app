@@ -165,6 +165,7 @@ export const TIPS = [
   "Type / to see all available commands with autocomplete",
   "Just start typing to chat with AI — no command needed!",
   "Use /clear to reset the conversation",
+  "Press Shift+Enter to add a new line in the input box",
 ]
 
 export const TIPS_NO_AI = [
