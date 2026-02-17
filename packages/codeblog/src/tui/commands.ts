@@ -31,11 +31,9 @@ export interface CommandDeps {
 
 export function createCommands(deps: CommandDeps): CmdDef[] {
   return [
-    // UI-only commands (no AI needed)
+    // === Configuration & Setup ===
     { name: "/ai", description: "Configure AI provider (paste URL + key)", action: () => deps.startAIConfig() },
     { name: "/model", description: "Choose AI model", action: () => deps.navigate({ type: "model" }) },
-    { name: "/clear", description: "Clear conversation", action: () => deps.clearChat() },
-    { name: "/new", description: "New conversation", action: () => deps.clearChat() },
     { name: "/login", description: "Sign in to CodeBlog", action: async () => {
       deps.showMsg("Opening browser for login...", deps.colors.primary)
       await deps.onLogin()
@@ -49,21 +47,10 @@ export function createCommands(deps: CommandDeps): CmdDef[] {
         deps.onLogout()
       } catch (err) { deps.showMsg(`Logout failed: ${err instanceof Error ? err.message : String(err)}`, deps.colors.error) }
     }},
-    { name: "/theme", description: "Change color theme", action: () => deps.navigate({ type: "theme" }) },
-    { name: "/dark", description: "Switch to dark mode", action: () => { deps.setMode("dark"); deps.showMsg("Dark mode", deps.colors.text) } },
-    { name: "/light", description: "Switch to light mode", action: () => { deps.setMode("light"); deps.showMsg("Light mode", deps.colors.text) } },
-    { name: "/exit", description: "Exit CodeBlog", action: () => deps.exit() },
-    { name: "/resume", description: "Resume last chat session", action: (parts) => deps.resume(parts[1]) },
-    { name: "/history", description: "Show recent chat sessions", action: () => {
-      try {
-        const sessions = deps.listSessions()
-        if (sessions.length === 0) { deps.showMsg("No chat history yet", deps.colors.warning); return }
-        const lines = sessions.map((s, i) => `${i + 1}. ${s.title || "(untitled)"} (${s.count} msgs, ${new Date(s.time).toLocaleDateString()})`)
-        deps.showMsg(lines.join(" | "), deps.colors.text)
-      } catch { deps.showMsg("Failed to load history", deps.colors.error) }
-    }},
+    { name: "/config", description: "Show configuration", needsAI: true, action: () => deps.send("Show my current CodeBlog configuration — AI provider, model, login status.") },
+    { name: "/status", description: "Check setup status", needsAI: true, action: () => deps.send("Check my CodeBlog status — login, config, detected IDEs, agent info.") },
 
-    // === Session tools (scan_sessions, read_session, analyze_session) ===
+    // === Session Management ===
     { name: "/scan", description: "Scan IDE coding sessions", needsAI: true, action: () => deps.send("Scan my local IDE coding sessions and tell me what you found. Show sources, projects, and session counts.") },
     { name: "/read", description: "Read a session: /read <index>", needsAI: true, action: (parts) => {
       const idx = parts[1]
@@ -74,7 +61,7 @@ export function createCommands(deps: CommandDeps): CmdDef[] {
       deps.send(idx ? `Analyze session #${idx} — extract topics, problems, solutions, code snippets, and insights.` : "Scan my sessions and analyze the most interesting one.")
     }},
 
-    // === Posting tools (post_to_codeblog, auto_post, weekly_digest) ===
+    // === Publishing ===
     { name: "/publish", description: "Auto-publish a coding session", needsAI: true, action: () => deps.send("Scan my IDE sessions, pick the most interesting one with enough content, and auto-publish it as a blog post on CodeBlog.") },
     { name: "/write", description: "Write a custom post: /write <title>", needsAI: true, action: (parts) => {
       const title = parts.slice(1).join(" ")
@@ -82,7 +69,7 @@ export function createCommands(deps: CommandDeps): CmdDef[] {
     }},
     { name: "/digest", description: "Weekly coding digest", needsAI: true, action: () => deps.send("Generate a weekly coding digest from my recent sessions — aggregate projects, languages, problems, and insights. Preview it first.") },
 
-    // === Forum browse & search (browse_posts, search_posts, read_post, browse_by_tag, trending_topics, explore_and_engage) ===
+    // === Browse & Discover ===
     { name: "/feed", description: "Browse recent posts", needsAI: true, action: () => deps.send("Browse the latest posts on CodeBlog. Show me titles, authors, votes, tags, and a brief summary of each.") },
     { name: "/search", description: "Search posts: /search <query>", needsAI: true, action: (parts) => {
       const query = parts.slice(1).join(" ")
@@ -100,7 +87,7 @@ export function createCommands(deps: CommandDeps): CmdDef[] {
     { name: "/trending", description: "Trending topics", needsAI: true, action: () => deps.send("Show me trending topics on CodeBlog — top upvoted, most discussed, active agents, trending tags.") },
     { name: "/explore", description: "Explore & engage", needsAI: true, action: () => deps.send("Explore the CodeBlog community — find interesting posts, trending topics, and active discussions I can engage with.") },
 
-    // === Forum interact (comment_on_post, vote_on_post, edit_post, delete_post, bookmark_post) ===
+    // === Interact ===
     { name: "/comment", description: "Comment: /comment <post_id> <text>", needsAI: true, action: (parts) => {
       const id = parts[1]
       const text = parts.slice(2).join(" ")
@@ -128,30 +115,41 @@ export function createCommands(deps: CommandDeps): CmdDef[] {
       deps.send(id ? `Toggle bookmark on post "${id}".` : "Show me my bookmarked posts on CodeBlog.")
     }},
 
-    // === Debates (join_debate) ===
+    // === My Content & Stats ===
+    { name: "/agents", description: "Manage agents", needsAI: true, action: () => deps.send("List my CodeBlog agents and show their status.") },
+    { name: "/posts", description: "My posts", needsAI: true, action: () => deps.send("Show me all my posts on CodeBlog with their stats — votes, views, comments.") },
+    { name: "/dashboard", description: "My dashboard stats", needsAI: true, action: () => deps.send("Show me my CodeBlog dashboard — total posts, votes, views, followers, and top posts.") },
+    { name: "/notifications", description: "My notifications", needsAI: true, action: () => deps.send("Check my CodeBlog notifications and tell me what's new.") },
+
+    // === Social ===
+    { name: "/follow", description: "Follow: /follow <username>", needsAI: true, action: (parts) => {
+      const user = parts[1]
+      deps.send(user ? `Follow user "${user}" on CodeBlog.` : "Show me who I'm following on CodeBlog.")
+    }},
     { name: "/debate", description: "Tech debates: /debate [topic]", needsAI: true, action: (parts) => {
       const topic = parts.slice(1).join(" ")
       deps.send(topic ? `Create or join a debate about "${topic}" on CodeBlog.` : "Show me active tech debates on CodeBlog.")
     }},
 
-    // === Notifications (my_notifications) ===
-    { name: "/notifications", description: "My notifications", needsAI: true, action: () => deps.send("Check my CodeBlog notifications and tell me what's new.") },
-
-    // === Agent tools (manage_agents, my_posts, my_dashboard, follow_user) ===
-    { name: "/agents", description: "Manage agents", needsAI: true, action: () => deps.send("List my CodeBlog agents and show their status.") },
-    { name: "/posts", description: "My posts", needsAI: true, action: () => deps.send("Show me all my posts on CodeBlog with their stats — votes, views, comments.") },
-    { name: "/dashboard", description: "My dashboard stats", needsAI: true, action: () => deps.send("Show me my CodeBlog dashboard — total posts, votes, views, followers, and top posts.") },
-    { name: "/follow", description: "Follow: /follow <username>", needsAI: true, action: (parts) => {
-      const user = parts[1]
-      deps.send(user ? `Follow user "${user}" on CodeBlog.` : "Show me who I'm following on CodeBlog.")
+    // === UI & Navigation ===
+    { name: "/clear", description: "Clear conversation", action: () => deps.clearChat() },
+    { name: "/new", description: "New conversation", action: () => deps.clearChat() },
+    { name: "/theme", description: "Change color theme", action: () => deps.navigate({ type: "theme" }) },
+    { name: "/dark", description: "Switch to dark mode", action: () => { deps.setMode("dark"); deps.showMsg("Dark mode", deps.colors.text) } },
+    { name: "/light", description: "Switch to light mode", action: () => { deps.setMode("light"); deps.showMsg("Light mode", deps.colors.text) } },
+    { name: "/resume", description: "Resume last chat session", action: (parts) => deps.resume(parts[1]) },
+    { name: "/history", description: "Show recent chat sessions", action: () => {
+      try {
+        const sessions = deps.listSessions()
+        if (sessions.length === 0) { deps.showMsg("No chat history yet", deps.colors.warning); return }
+        const lines = sessions.map((s, i) => `${i + 1}. ${s.title || "(untitled)"} (${s.count} msgs, ${new Date(s.time).toLocaleDateString()})`)
+        deps.showMsg(lines.join(" | "), deps.colors.text)
+      } catch { deps.showMsg("Failed to load history", deps.colors.error) }
     }},
-
-    // === Config & Status (show_config, codeblog_status) ===
-    { name: "/config", description: "Show configuration", needsAI: true, action: () => deps.send("Show my current CodeBlog configuration — AI provider, model, login status.") },
-    { name: "/status", description: "Check setup status", needsAI: true, action: () => deps.send("Check my CodeBlog status — login, config, detected IDEs, agent info.") },
+    { name: "/exit", description: "Exit CodeBlog", action: () => deps.exit() },
 
     { name: "/help", description: "Show all commands", action: () => {
-      deps.showMsg("/scan /read /analyze /publish /write /digest /feed /search /post /tag /trending /explore /comment /vote /edit /delete /bookmark /debate /notifications /agents /posts /dashboard /follow /config /status | /ai /model /clear /theme /login /logout /exit", deps.colors.text)
+      deps.showMsg("Commands grouped: Setup (/ai /login) | Sessions (/scan /read /analyze) | Publish (/publish /write) | Browse (/feed /search /trending) | Interact (/comment /vote /bookmark) | My Stuff (/agents /posts /dashboard) | UI (/clear /theme /exit)", deps.colors.text)
     }},
   ]
 }

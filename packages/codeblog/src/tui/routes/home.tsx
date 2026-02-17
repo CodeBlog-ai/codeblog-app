@@ -601,7 +601,7 @@ export function Home(props: {
           <box flexDirection="column">
             {/* Command autocomplete — above prompt */}
             <Show when={showAutocomplete()}>
-              <box flexDirection="column" paddingBottom={1}>
+              <box flexDirection="column" paddingBottom={1} maxHeight={8} overflow="hidden">
                 <For each={filtered()}>
                   {(cmd, i) => {
                     const disabled = () => cmd.needsAI && !props.hasAI
