@@ -18,11 +18,16 @@ You help developers with everything on the platform:
 You have 20+ tools. Use them whenever the user's request matches. Chain multiple tools if needed.
 After a tool returns results, summarize them naturally for the user.
 
+CRITICAL: When using tools, ALWAYS use the EXACT data returned by previous tool calls.
+- If scan_sessions returns a path like "/Users/zhaoyifei/...", use that EXACT path
+- NEVER modify, guess, or infer file paths — use them exactly as returned
+- If a tool call fails with "file not found", the path is wrong — check the scan results again
+
 Write casually like a dev talking to another dev. Be specific, opinionated, and genuine.
 Use code examples when relevant. Think Juejin / HN / Linux.do vibes — not a conference paper.`
 
-const MAX_TOOL_STEPS = 1
 const IDLE_TIMEOUT_MS = 15_000 // 15s without any stream event → abort
+const DEFAULT_MAX_STEPS = 10 // Allow AI to retry tools up to 10 steps (each tool call + result = 1 step)
 
 export namespace AIChat {
   export interface Message {
@@ -38,10 +43,21 @@ export namespace AIChat {
     onToolResult?: (name: string, result: unknown) => void
   }
 
-  export async function stream(messages: Message[], callbacks: StreamCallbacks, modelID?: string, signal?: AbortSignal) {
+  export interface StreamOptions {
+    maxSteps?: number
+  }
+
+  export async function stream(
+    messages: Message[],
+    callbacks: StreamCallbacks,
+    modelID?: string,
+    signal?: AbortSignal,
+    options?: StreamOptions
+  ) {
     const model = await AIProvider.getModel(modelID)
     const tools = await getChatTools()
-    log.info("streaming", { model: modelID || AIProvider.DEFAULT_MODEL, messages: messages.length, toolCount: Object.keys(tools).length })
+    const maxSteps = options?.maxSteps ?? DEFAULT_MAX_STEPS
+    log.info("streaming", { model: modelID || AIProvider.DEFAULT_MODEL, messages: messages.length, toolCount: Object.keys(tools).length, maxSteps })
 
     const history = messages
       .filter((m) => m.role === "user" || m.role === "assistant")
@@ -61,9 +77,10 @@ export namespace AIChat {
       system: SYSTEM_PROMPT,
       messages: history,
       tools,
-      stopWhen: stepCountIs(MAX_TOOL_STEPS),
+      stopWhen: stepCountIs(maxSteps),
       toolChoice: "auto",
       abortSignal: internalAbort.signal,
+      experimental_toolCallStreaming: false, // Disable streaming tool calls to avoid incomplete arguments bug
       onStepFinish: (stepResult) => {
         log.info("onStepFinish", {
           stepNumber: stepResult.stepNumber,
@@ -106,11 +123,13 @@ export namespace AIChat {
             break
           }
           case "tool-call": {
-            log.info("tool-call", { toolName: (part as any).toolName, partCount })
+            const toolName = (part as any).toolName
+            const toolArgs = (part as any).args ?? (part as any).input ?? {}
+            log.info("tool-call", { toolName, args: toolArgs, partCount })
             // Pause idle timer — tool execution happens between tool-call and tool-result
             toolExecuting = true
             if (idleTimer) { clearTimeout(idleTimer); idleTimer = undefined }
-            callbacks.onToolCall?.((part as any).toolName, (part as any).input ?? (part as any).args)
+            callbacks.onToolCall?.(toolName, toolArgs)
             break
           }
           case "tool-result": {
@@ -120,8 +139,12 @@ export namespace AIChat {
             break
           }
           case "tool-error" as any: {
-            log.error("tool-error", { toolName: (part as any).toolName, error: String((part as any).error).slice(0, 500) })
+            const errorMsg = String((part as any).error).slice(0, 500)
+            log.error("tool-error", { toolName: (part as any).toolName, error: errorMsg })
             toolExecuting = false
+            // Abort the stream on tool error to prevent infinite retry loops
+            log.info("aborting stream due to tool error")
+            internalAbort.abort()
             break
           }
           case "error": {

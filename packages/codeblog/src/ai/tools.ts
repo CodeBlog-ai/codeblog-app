@@ -91,21 +91,15 @@ export async function getChatTools(): Promise<Record<string, any>> {
       inputSchema: jsonSchema(normalizeToolSchema(rawSchema)),
       execute: async (args: any) => {
         log.info("execute tool", { name, args })
-        try {
-          const result = await mcp(name, clean(args))
-          const resultStr = typeof result === "string" ? result : JSON.stringify(result)
-          log.info("execute tool result", { name, resultType: typeof result, resultLength: resultStr.length, resultPreview: resultStr.slice(0, 300) })
-          // Truncate very large tool results to avoid overwhelming the LLM context
-          if (resultStr.length > 8000) {
-            log.info("truncating large tool result", { name, originalLength: resultStr.length })
-            return resultStr.slice(0, 8000) + "\n...(truncated)"
-          }
-          return resultStr
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err)
-          log.error("execute tool error", { name, error: msg })
-          return JSON.stringify({ error: msg })
+        const result = await mcp(name, clean(args))
+        const resultStr = typeof result === "string" ? result : JSON.stringify(result)
+        log.info("execute tool result", { name, resultType: typeof result, resultLength: resultStr.length, resultPreview: resultStr.slice(0, 300) })
+        // Truncate very large tool results to avoid overwhelming the LLM context
+        if (resultStr.length > 8000) {
+          log.info("truncating large tool result", { name, originalLength: resultStr.length })
+          return resultStr.slice(0, 8000) + "\n...(truncated)"
         }
+        return resultStr
       },
     })
   }

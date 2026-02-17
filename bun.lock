@@ -28,7 +28,7 @@
         "@opentui/core": "^0.1.79",
         "@opentui/solid": "^0.1.79",
         "ai": "^6.0.86",
-        "codeblog-mcp": "^2.1.2",
+        "codeblog-mcp": "^2.1.3",
         "drizzle-orm": "1.0.0-beta.12-a5629fb",
         "fuzzysort": "^3.1.0",
         "hono": "4.10.7",
@@ -427,6 +427,16 @@
     "cliui": ["cliui@9.0.1", "", { "dependencies": { "string-width": "^7.2.0", "strip-ansi": "^7.1.0", "wrap-ansi": "^9.0.0" } }, "sha512-k7ndgKhwoQveBL+/1tqGJYNz097I7WOvwbmmU2AR5+magtbjPWQTS1C5vzGkBC8Ym8UWRzfKUzUUqFLypY4Q+w=="],
 
     "codeblog-app": ["codeblog-app@workspace:packages/codeblog"],
+
+    "codeblog-app-darwin-arm64": ["codeblog-app-darwin-arm64@2.2.0", "", { "os": "darwin", "cpu": "arm64", "bin": { "codeblog": "bin/codeblog" } }, "sha512-HPDJJLsbUTA1Bq91iedEVHLljhcLbhzrjQwLW6mOJ/K3Dt3Razl/HesO6Jehw6zklDR0kAIWETVIckADEMYbAw=="],
+
+    "codeblog-app-darwin-x64": ["codeblog-app-darwin-x64@2.2.0", "", { "os": "darwin", "cpu": "x64", "bin": { "codeblog": "bin/codeblog" } }, "sha512-rxvP/z6ZrdCAZYiaVgq5DBUYhflmNesEO2+Zt5b3GVXYOhz5ZKOQWjyftgC/hn+JQGx8tsfvUPUzL6VzwS9ieQ=="],
+
+    "codeblog-app-linux-arm64": ["codeblog-app-linux-arm64@2.2.0", "", { "os": "linux", "cpu": "arm64", "bin": { "codeblog": "bin/codeblog" } }, "sha512-nOlt+Fx1tey06KDwgyP0RNLibYA2C7V8W2GF3mjwq30jErzwXaLdRIairzsEynKkACWD8LWqloWOkULuNs03hw=="],
+
+    "codeblog-app-linux-x64": ["codeblog-app-linux-x64@2.2.0", "", { "os": "linux", "cpu": "x64", "bin": { "codeblog": "bin/codeblog" } }, "sha512-5o7naeKP8XRrQJqjW7f4gaTBH7JuhLye4xl2JaIa1D+cYMRDTbof3oJ7BLSKvyX3lVWtgeoBxKUMUO1NfsOGTA=="],
+
+    "codeblog-app-windows-x64": ["codeblog-app-windows-x64@2.2.0", "", { "os": "win32", "cpu": "x64", "bin": { "codeblog": "bin/codeblog.exe" } }, "sha512-FzeOUQ/UaTHitjdmtPHM+KJOr3UMEC0aEF+gNb2Tbanss8ycRlnA5zfACLquk/Z0tTo6TgmuwERZ4NR38YQzcg=="],
 
     "codeblog-mcp": ["codeblog-mcp@2.1.2", "", { "dependencies": { "@modelcontextprotocol/sdk": "^1.26.0", "better-sqlite3": "^12.6.2", "zod": "^3.24.0" }, "bin": { "codeblog-mcp": "dist/index.js" } }, "sha512-UPIUpYtlW5bmx8dn03OVf5LVmPUOcCtVISH+u5IOvH8Yk4H8BBTmdmjK3rgFopaatf41GRvsv+ELBTZRPn0Mlg=="],
 
@@ -956,6 +966,8 @@
 
     "babel-plugin-jsx-dom-expressions/@babel/helper-module-imports": ["@babel/helper-module-imports@7.18.6", "", { "dependencies": { "@babel/types": "^7.18.6" } }, "sha512-0NFvs3VkuSYbFi1x2Vd6tKrywq+z/cLeYC/RJNFrIX/30Bf5aiGYbtvGXolEktzJH8o5E5KJ3tT+nkxuuZFVlA=="],
 
+    "codeblog-app/codeblog-mcp": ["codeblog-mcp@2.1.3", "", { "dependencies": { "@modelcontextprotocol/sdk": "^1.26.0", "better-sqlite3": "^12.6.2", "zod": "^3.24.0" }, "bin": { "codeblog-mcp": "dist/index.js" } }, "sha512-cCVOYvqqFRu/PlkLs1MLt9Q6cfzk8+BLeB7J6J/RcUpVf1dd9cY0f6JdGixZ3Ill0nSKm5hrG4TOF7lRsVKiig=="],
+
     "codeblog-mcp/zod": ["zod@3.25.76", "", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
 
     "image-q/@types/node": ["@types/node@16.9.1", "", {}, "sha512-QpLcX9ZSsq3YYUUnD3nFDY8H7wctAhQj/TFKL8Ya8v5fMm3CFXxo8zStsLAl780ltoYoo1WvKUVGBQK+1ifr7g=="],
@@ -977,6 +989,8 @@
     "tedious/iconv-lite": ["iconv-lite@0.6.3", "", { "dependencies": { "safer-buffer": ">= 2.1.2 < 3.0.0" } }, "sha512-4fCk79wshMdzMp2rH06qWrJE4iolqLhCUH+OiuIgU++RB0+94NlDL81atO7GX55uUKueo0txHNtvEyI6D7WdMw=="],
 
     "tsx/esbuild": ["esbuild@0.27.3", "", { "optionalDependencies": { "@esbuild/aix-ppc64": "0.27.3", "@esbuild/android-arm": "0.27.3", "@esbuild/android-arm64": "0.27.3", "@esbuild/android-x64": "0.27.3", "@esbuild/darwin-arm64": "0.27.3", "@esbuild/darwin-x64": "0.27.3", "@esbuild/freebsd-arm64": "0.27.3", "@esbuild/freebsd-x64": "0.27.3", "@esbuild/linux-arm": "0.27.3", "@esbuild/linux-arm64": "0.27.3", "@esbuild/linux-ia32": "0.27.3", "@esbuild/linux-loong64": "0.27.3", "@esbuild/linux-mips64el": "0.27.3", "@esbuild/linux-ppc64": "0.27.3", "@esbuild/linux-riscv64": "0.27.3", "@esbuild/linux-s390x": "0.27.3", "@esbuild/linux-x64": "0.27.3", "@esbuild/netbsd-arm64": "0.27.3", "@esbuild/netbsd-x64": "0.27.3", "@esbuild/openbsd-arm64": "0.27.3", "@esbuild/openbsd-x64": "0.27.3", "@esbuild/openharmony-arm64": "0.27.3", "@esbuild/sunos-x64": "0.27.3", "@esbuild/win32-arm64": "0.27.3", "@esbuild/win32-ia32": "0.27.3", "@esbuild/win32-x64": "0.27.3" }, "bin": { "esbuild": "bin/esbuild" } }, "sha512-8VwMnyGCONIs6cWue2IdpHxHnAjzxnw2Zr7MkVxB2vjmQ2ivqGFb4LEG3SMnv0Gb2F/G/2yA8zUaiL1gywDCCg=="],
+
+    "codeblog-app/codeblog-mcp/zod": ["zod@3.25.76", "", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
 
     "tar-stream/bl/buffer": ["buffer@5.7.1", "", { "dependencies": { "base64-js": "^1.3.1", "ieee754": "^1.1.13" } }, "sha512-EHcyIPBQ4BSGlvjB16k5KgAJ27CIsHY/2JBmCRReo48y9rQ3MaUzWX3KVlBa4U7MyX02HdVj0K7C3WaB3ju7FQ=="],
 

@@ -1,12 +1,39 @@
 import { createSignal, createMemo, createEffect, onCleanup, Show, For } from "solid-js"
 import { useKeyboard, usePaste } from "@opentui/solid"
+import { SyntaxStyle, type ThemeTokenStyle } from "@opentui/core"
 import { useRoute } from "../context/route"
 import { useExit } from "../context/exit"
-import { useTheme } from "../context/theme"
+import { useTheme, type ThemeColors } from "../context/theme"
 import { createCommands, LOGO, TIPS, TIPS_NO_AI } from "../commands"
 import { TOOL_LABELS } from "../../ai/tools"
 import { mask, saveProvider } from "../../ai/configure"
 import { ChatHistory } from "../../storage/chat"
+
+function buildMarkdownSyntaxRules(colors: ThemeColors): ThemeTokenStyle[] {
+  return [
+    { scope: ["default"], style: { foreground: colors.text } },
+    { scope: ["spell", "nospell"], style: { foreground: colors.text } },
+    { scope: ["conceal"], style: { foreground: colors.textMuted } },
+    { scope: ["markup.heading", "markup.heading.1", "markup.heading.2", "markup.heading.3", "markup.heading.4", "markup.heading.5", "markup.heading.6"], style: { foreground: colors.primary, bold: true } },
+    { scope: ["markup.bold", "markup.strong"], style: { foreground: colors.text, bold: true } },
+    { scope: ["markup.italic"], style: { foreground: colors.text, italic: true } },
+    { scope: ["markup.list"], style: { foreground: colors.text } },
+    { scope: ["markup.quote"], style: { foreground: colors.textMuted, italic: true } },
+    { scope: ["markup.raw", "markup.raw.block", "markup.raw.inline"], style: { foreground: colors.accent } },
+    { scope: ["markup.link", "markup.link.url"], style: { foreground: colors.primary, underline: true } },
+    { scope: ["markup.link.label"], style: { foreground: colors.primary, underline: true } },
+    { scope: ["label"], style: { foreground: colors.primary } },
+    { scope: ["comment"], style: { foreground: colors.textMuted, italic: true } },
+    { scope: ["string", "symbol"], style: { foreground: colors.success } },
+    { scope: ["number", "boolean"], style: { foreground: colors.accent } },
+    { scope: ["keyword"], style: { foreground: colors.primary, italic: true } },
+    { scope: ["keyword.function", "function.method", "function", "constructor", "variable.member"], style: { foreground: colors.primary } },
+    { scope: ["variable", "variable.parameter", "property", "parameter"], style: { foreground: colors.text } },
+    { scope: ["type", "module", "class"], style: { foreground: colors.warning } },
+    { scope: ["operator", "keyword.operator", "punctuation.delimiter"], style: { foreground: colors.textMuted } },
+    { scope: ["punctuation", "punctuation.bracket"], style: { foreground: colors.textMuted } },
+  ]
+}
 
 interface ChatMsg {
   role: "user" | "assistant" | "tool"
@@ -18,6 +45,7 @@ interface ChatMsg {
 export function Home(props: {
   loggedIn: boolean
   username: string
+  activeAgent: string
   hasAI: boolean
   aiProvider: string
   modelName: string
@@ -40,6 +68,7 @@ export function Home(props: {
   let escCooldown = 0
   let sessionId = ""
   const chatting = createMemo(() => messages().length > 0 || streaming())
+  const syntaxStyle = createMemo(() => SyntaxStyle.fromTheme(buildMarkdownSyntaxRules(theme.colors)))
 
   function ensureSession() {
     if (!sessionId) {
@@ -151,6 +180,7 @@ export function Home(props: {
     setStreaming(true)
     setStreamText("")
     setMessage("")
+    let summaryStreamActive = false
 
     try {
       const { AIChat } = await import("../../ai/chat")
@@ -165,7 +195,6 @@ export function Home(props: {
       let hasToolCalls = false
       let lastToolName = ""
       let lastToolResult = ""
-      let summaryStreamActive = false
       abortCtrl = new AbortController()
       sendLog.info("calling AIChat.stream", { model: mid, msgCount: allMsgs.length })
       await AIChat.stream(allMsgs, {
@@ -256,7 +285,7 @@ export function Home(props: {
           setStreamText(""); setStreaming(false)
           saveChat()
         },
-      }, mid, abortCtrl.signal)
+      }, mid, abortCtrl.signal, { maxSteps: 10 })
       sendLog.info("AIChat.stream returned normally")
       abortCtrl = undefined
     } catch (err) {
@@ -434,23 +463,37 @@ export function Home(props: {
           ))}
           <box height={1} />
           <text fg={theme.colors.textMuted}>The AI-powered coding forum</text>
-        </box>
-        <Show when={!props.loggedIn || !props.hasAI}>
-          <box flexShrink={0} flexDirection="column" paddingTop={1} alignItems="center">
+
+          {/* Status info below logo */}
+          <box height={1} />
+          <box flexDirection="column" alignItems="center" gap={0}>
             <box flexDirection="row" gap={1}>
-              <text fg={props.hasAI ? theme.colors.success : theme.colors.warning}>{props.hasAI ? "✓" : "●"}</text>
-              <text fg={props.hasAI ? theme.colors.textMuted : theme.colors.text}>
-                {props.hasAI ? `AI: ${props.modelName}` : "Type /ai to configure AI"}
+              <text fg={props.hasAI ? theme.colors.success : theme.colors.warning}>
+                {props.hasAI ? "●" : "○"}
               </text>
+              <text fg={theme.colors.text}>
+                {props.hasAI ? props.modelName : "No AI"}
+              </text>
+              <Show when={!props.hasAI}>
+                <text fg={theme.colors.textMuted}> — type /ai</text>
+              </Show>
             </box>
             <box flexDirection="row" gap={1}>
-              <text fg={props.loggedIn ? theme.colors.success : theme.colors.warning}>{props.loggedIn ? "✓" : "●"}</text>
-              <text fg={props.loggedIn ? theme.colors.textMuted : theme.colors.text}>
-                {props.loggedIn ? `Logged in as ${props.username}` : "Type /login to sign in"}
+              <text fg={props.loggedIn ? theme.colors.success : theme.colors.warning}>
+                {props.loggedIn ? "●" : "○"}
               </text>
+              <text fg={theme.colors.text}>
+                {props.loggedIn ? props.username : "Not logged in"}
+              </text>
+              <Show when={props.loggedIn && props.activeAgent}>
+                <text fg={theme.colors.textMuted}> / {props.activeAgent}</text>
+              </Show>
+              <Show when={!props.loggedIn}>
+                <text fg={theme.colors.textMuted}> — type /login</text>
+              </Show>
             </box>
           </box>
-        </Show>
+        </box>
       </Show>
 
       {/* When chatting: messages fill the space */}
@@ -483,29 +526,42 @@ export function Home(props: {
                 </Show>
                 {/* Assistant message — ◆ prefix */}
                 <Show when={msg.role === "assistant"}>
-                  <box flexDirection="row" paddingBottom={1}>
-                    <text fg={theme.colors.success} flexShrink={0}>
-                      <span style={{ bold: true }}>{"◆ "}</span>
-                    </text>
-                    <text fg={theme.colors.text} wrapMode="word" flexGrow={1} flexShrink={1}>{msg.content}</text>
+                  <box paddingBottom={1} flexShrink={0}>
+                    <code
+                      filetype="markdown"
+                      drawUnstyledText={false}
+                      syntaxStyle={syntaxStyle()}
+                      content={msg.content}
+                      conceal={true}
+                      fg={theme.colors.text}
+                    />
                   </box>
                 </Show>
               </box>
             )}
           </For>
           <box
-            flexDirection="row"
-            paddingBottom={streaming() ? 1 : 0}
             flexShrink={0}
+            paddingBottom={streaming() ? 1 : 0}
             height={streaming() ? undefined : 0}
             overflow="hidden"
           >
-            <text fg={theme.colors.success} flexShrink={0}>
-              <span style={{ bold: true }}>{streaming() ? "◆ " : ""}</span>
-            </text>
-            <text fg={streamText() ? theme.colors.text : theme.colors.textMuted} wrapMode="word" flexGrow={1} flexShrink={1}>
-              {streaming() ? (streamText() || shimmerText()) : ""}
-            </text>
+            <Show when={streaming() && streamText()}>
+              <code
+                filetype="markdown"
+                drawUnstyledText={false}
+                streaming={true}
+                syntaxStyle={syntaxStyle()}
+                content={streamText()}
+                conceal={true}
+                fg={theme.colors.text}
+              />
+            </Show>
+            <Show when={streaming() && !streamText()}>
+              <text fg={theme.colors.textMuted} wrapMode="word">
+                {"◆ " + shimmerText()}
+              </text>
+            </Show>
           </box>
         </scrollbox>
       </Show>
@@ -575,11 +631,11 @@ export function Home(props: {
                 <text fg={theme.colors.textMuted}>{tipPool()[tipIdx % tipPool().length]}</text>
               </box>
             </Show>
-            {/* Input line */}
+            {/* Input line with blinking cursor */}
             <box flexDirection="row">
               <text fg={theme.colors.primary}><span style={{ bold: true }}>{"❯ "}</span></text>
               <text fg={theme.colors.input}>{input()}</text>
-              <text fg={theme.colors.cursor}>{"█"}</text>
+              <text fg={theme.colors.cursor} style={{ bold: true }}>{"█"}</text>
             </box>
           </box>
         </Show>

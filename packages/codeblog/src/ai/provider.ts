@@ -163,7 +163,20 @@ export namespace AIProvider {
   }
 
   function getLanguageModel(providerID: string, modelID: string, apiKey: string, npm?: string, baseURL?: string): LanguageModel {
-    const pkg = npm || PROVIDER_NPM[providerID] || "@ai-sdk/openai-compatible"
+    // Auto-detect Anthropic models and use @ai-sdk/anthropic instead of openai-compatible
+    // This fixes streaming tool call argument parsing issues with openai-compatible provider
+    let pkg = npm || PROVIDER_NPM[providerID]
+
+    // Force Anthropic SDK for Claude models, even if provider is openai-compatible
+    if (modelID.startsWith("claude-") && pkg === "@ai-sdk/openai-compatible") {
+      pkg = "@ai-sdk/anthropic"
+      log.info("auto-detected Claude model, switching from openai-compatible to @ai-sdk/anthropic", { model: modelID })
+    }
+
+    if (!pkg) {
+      pkg = "@ai-sdk/openai-compatible"
+    }
+
     const cacheKey = `${providerID}:${pkg}:${apiKey.slice(0, 8)}`
 
     log.info("loading model", { provider: providerID, model: modelID, pkg })

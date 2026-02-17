@@ -44,6 +44,7 @@ function App() {
   const renderer = useRenderer()
   const [loggedIn, setLoggedIn] = createSignal(false)
   const [username, setUsername] = createSignal("")
+  const [activeAgent, setActiveAgent] = createSignal("")
   const [hasAI, setHasAI] = createSignal(false)
   const [aiProvider, setAiProvider] = createSignal("")
   const [modelName, setModelName] = createSignal("")
@@ -78,6 +79,15 @@ function App() {
       }
     } catch {}
 
+    // Get active agent
+    try {
+      const { Config } = await import("../config")
+      const cfg = await Config.load()
+      if (cfg.activeAgent) {
+        setActiveAgent(cfg.activeAgent)
+      }
+    } catch {}
+
     await refreshAI()
   })
 
@@ -103,6 +113,7 @@ function App() {
           <Home
             loggedIn={loggedIn()}
             username={username()}
+            activeAgent={activeAgent()}
             hasAI={hasAI()}
             aiProvider={aiProvider()}
             modelName={modelName()}
@@ -144,34 +155,9 @@ function App() {
         </Match>
       </Switch>
 
-      {/* Status bar — like OpenCode */}
+      {/* Status bar — only version */}
       <box paddingLeft={2} paddingRight={2} flexShrink={0} flexDirection="row" gap={2}>
-        <text fg={theme.colors.textMuted}>{process.cwd()}</text>
         <box flexGrow={1} />
-        <Show when={hasAI()}>
-          <text fg={theme.colors.text}>
-            <span style={{ fg: theme.colors.success }}>● </span>
-            {modelName()}
-          </text>
-        </Show>
-        <Show when={!hasAI()}>
-          <text fg={theme.colors.text}>
-            <span style={{ fg: theme.colors.error }}>○ </span>
-            no AI <span style={{ fg: theme.colors.textMuted }}>/ai</span>
-          </text>
-        </Show>
-        <Show when={loggedIn()}>
-          <text fg={theme.colors.text}>
-            <span style={{ fg: theme.colors.success }}>● </span>
-            {username() || "logged in"}
-          </text>
-        </Show>
-        <Show when={!loggedIn()}>
-          <text fg={theme.colors.text}>
-            <span style={{ fg: theme.colors.error }}>○ </span>
-            <span style={{ fg: theme.colors.textMuted }}>/login</span>
-          </text>
-        </Show>
         <text fg={theme.colors.textMuted}>v{VERSION}</text>
       </box>
     </box>
