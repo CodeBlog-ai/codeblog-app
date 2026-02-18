@@ -162,6 +162,29 @@ export function Home(props: {
     return filtered().length > 0
   })
 
+  createEffect(() => {
+    const len = filtered().length
+    const idx = selectedIdx()
+    if (len === 0 && idx !== 0) {
+      setSelectedIdx(0)
+      return
+    }
+    if (idx >= len) setSelectedIdx(len - 1)
+  })
+
+  const visibleStart = createMemo(() => {
+    const len = filtered().length
+    if (len <= 8) return 0
+    const max = len - 8
+    const idx = selectedIdx()
+    return Math.max(0, Math.min(idx - 3, max))
+  })
+
+  const visibleItems = createMemo(() => {
+    const start = visibleStart()
+    return filtered().slice(start, start + 8)
+  })
+
   usePaste((evt) => {
     // For URL/key modes, strip newlines; for normal input, preserve them
     if (aiMode() === "url" || aiMode() === "key") {
@@ -428,8 +451,14 @@ export function Home(props: {
     }
 
     if (showAutocomplete()) {
-      if (evt.name === "up") { setSelectedIdx((i) => (i - 1 + filtered().length) % filtered().length); evt.preventDefault(); return }
-      if (evt.name === "down") { setSelectedIdx((i) => (i + 1) % filtered().length); evt.preventDefault(); return }
+      if (evt.name === "up" || evt.name === "down") {
+        const len = filtered().length
+        if (len === 0) { evt.preventDefault(); return }
+        if (evt.name === "up") setSelectedIdx((i) => (i - 1 + len) % len)
+        else setSelectedIdx((i) => (i + 1) % len)
+        evt.preventDefault()
+        return
+      }
       if (evt.name === "tab") {
         const sel = filtered()[selectedIdx()]
         if (sel) setInput(sel.name + " ")
@@ -609,23 +638,29 @@ export function Home(props: {
           <box flexDirection="column">
             {/* Command autocomplete — above prompt */}
             <Show when={showAutocomplete()}>
-              <box flexDirection="column" paddingBottom={1} maxHeight={8} overflow="hidden">
-                <For each={filtered()}>
+              <box flexDirection="column" paddingBottom={1}>
+                <Show when={visibleStart() > 0}>
+                  <text fg={theme.colors.textMuted}>{"  ↑ more commands"}</text>
+                </Show>
+                <For each={visibleItems()}>
                   {(cmd, i) => {
                     const disabled = () => cmd.needsAI && !props.hasAI
-                    const selected = () => i() === selectedIdx()
+                    const selected = () => i() + visibleStart() === selectedIdx()
                     return (
-                      <box flexDirection="row" backgroundColor={selected() && !disabled() ? theme.colors.primary : undefined}>
-                        <text fg={selected() && !disabled() ? "#ffffff" : (disabled() ? theme.colors.textMuted : theme.colors.primary)}>
+                      <box flexDirection="row" backgroundColor={selected() ? theme.colors.primary : undefined}>
+                        <text fg={selected() ? "#ffffff" : (disabled() ? theme.colors.textMuted : theme.colors.primary)}>
                           {"  " + cmd.name.padEnd(18)}
                         </text>
-                        <text fg={selected() && !disabled() ? "#ffffff" : theme.colors.textMuted}>
+                        <text fg={selected() ? "#ffffff" : theme.colors.textMuted}>
                           {disabled() ? cmd.description + " [needs /ai]" : cmd.description}
                         </text>
                       </box>
                     )
                   }}
                 </For>
+                <Show when={visibleStart() + visibleItems().length < filtered().length}>
+                  <text fg={theme.colors.textMuted}>{"  ↓ more commands"}</text>
+                </Show>
               </box>
             </Show>
             {/* Message feedback */}
