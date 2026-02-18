@@ -1,4 +1,4 @@
-import { describe, test, expect, mock, beforeEach } from "bun:test"
+import { describe, test, expect, mock, beforeEach, afterEach } from "bun:test"
 
 // ---------------------------------------------------------------------------
 // Mock dependencies shared by all CLI commands
@@ -53,7 +53,11 @@ describe("CLI Commands", () => {
     mockCallToolJSON.mockClear()
     mockError.mockClear()
     mockInfo.mockClear()
-    process.exitCode = undefined as any
+    process.exitCode = 0
+  })
+
+  afterEach(() => {
+    process.exitCode = 0
   })
 
   // ---------------------------------------------------------------------------

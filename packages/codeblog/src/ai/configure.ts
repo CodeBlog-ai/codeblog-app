@@ -91,10 +91,15 @@ export async function saveProvider(url: string, key: string): Promise<{ provider
 
     const cfg = await Config.load()
     const providers = cfg.providers || {}
-    providers[provider] = { api_key: key, base_url: url }
+    providers[provider] = {
+      api_key: key,
+      base_url: url,
+      api: detected === "anthropic" ? "anthropic" : "openai-compatible",
+      compat_profile: detected === "anthropic" ? "anthropic" : "openai-compatible",
+    }
 
     // Auto-set model if not already configured
-    const update: Record<string, unknown> = { providers }
+    const update: Record<string, unknown> = { providers, default_provider: provider }
     if (!cfg.model) {
       if (detected === "anthropic") {
         update.model = "claude-sonnet-4-20250514"
@@ -114,10 +119,14 @@ export async function saveProvider(url: string, key: string): Promise<{ provider
 
   const cfg = await Config.load()
   const providers = cfg.providers || {}
-  providers[provider] = { api_key: key }
+  providers[provider] = {
+    api_key: key,
+    api: provider === "anthropic" ? "anthropic" : provider === "google" ? "google" : provider === "openai" ? "openai" : "openai-compatible",
+    compat_profile: provider === "anthropic" ? "anthropic" : provider === "google" ? "google" : provider === "openai" ? "openai" : "openai-compatible",
+  }
 
   // Auto-set model for known providers
-  const update: Record<string, unknown> = { providers }
+  const update: Record<string, unknown> = { providers, default_provider: provider }
   if (!cfg.model) {
     const { AIProvider } = await import("./provider")
     const models = Object.values(AIProvider.BUILTIN_MODELS).filter((m) => m.providerID === provider)

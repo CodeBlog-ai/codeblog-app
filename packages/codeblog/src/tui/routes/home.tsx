@@ -1,13 +1,16 @@
-import { createSignal, createMemo, createEffect, onCleanup, Show, For } from "solid-js"
+import { createSignal, createMemo, createEffect, onCleanup, onMount, untrack, Show, For } from "solid-js"
 import { useKeyboard, usePaste } from "@opentui/solid"
 import { SyntaxStyle, type ThemeTokenStyle } from "@opentui/core"
-import { useRoute } from "../context/route"
 import { useExit } from "../context/exit"
 import { useTheme, type ThemeColors } from "../context/theme"
 import { createCommands, LOGO, TIPS, TIPS_NO_AI } from "../commands"
 import { TOOL_LABELS } from "../../ai/tools"
 import { mask, saveProvider } from "../../ai/configure"
 import { ChatHistory } from "../../storage/chat"
+import { TuiStreamAssembler } from "../stream-assembler"
+import { resolveAssistantContent } from "../ai-stream"
+import { isShiftEnterSequence, onInputIntent } from "../input-intent"
+import { Log } from "../../util/log"
 
 function buildMarkdownSyntaxRules(colors: ThemeColors): ThemeTokenStyle[] {
   return [
@@ -36,10 +39,18 @@ function buildMarkdownSyntaxRules(colors: ThemeColors): ThemeTokenStyle[] {
 }
 
 interface ChatMsg {
-  role: "user" | "assistant" | "tool"
+  role: "user" | "assistant" | "tool" | "system"
   content: string
+  modelContent?: string
+  tone?: "info" | "success" | "warning" | "error"
   toolName?: string
+  toolCallID?: string
   toolStatus?: "running" | "done" | "error"
+}
+
+interface ModelOption {
+  id: string
+  label: string
 }
 
 export function Home(props: {
@@ -53,21 +64,25 @@ export function Home(props: {
   onLogout: () => void
   onAIConfigured: () => void
 }) {
-  const route = useRoute()
   const exit = useExit()
   const theme = useTheme()
   const [input, setInput] = createSignal("")
-  const [message, setMessage] = createSignal("")
-  const [messageColor, setMessageColor] = createSignal("#6a737c")
   const [selectedIdx, setSelectedIdx] = createSignal(0)
 
   const [messages, setMessages] = createSignal<ChatMsg[]>([])
   const [streaming, setStreaming] = createSignal(false)
   const [streamText, setStreamText] = createSignal("")
   let abortCtrl: AbortController | undefined
-  let escCooldown = 0
+  let abortByUser = false
+  let shiftDown = false
+  let commandDisplay = ""
   let sessionId = ""
   const chatting = createMemo(() => messages().length > 0 || streaming())
+  const renderRows = createMemo<Array<ChatMsg | { role: "stream" }>>(() => {
+    const rows = messages()
+    if (!streaming()) return rows
+    return [...rows, { role: "stream" as const }]
+  })
   const syntaxStyle = createMemo(() => SyntaxStyle.fromTheme(buildMarkdownSyntaxRules(theme.colors)))
 
   function ensureSession() {
@@ -87,7 +102,9 @@ export function Home(props: {
       if (!sid) {
         const sessions = ChatHistory.list(1)
         if (sessions.length === 0) { showMsg("No previous sessions", theme.colors.warning); return }
-        sid = sessions[0].id
+        const latest = sessions[0]
+        if (!latest) { showMsg("No previous sessions", theme.colors.warning); return }
+        sid = latest.id
       }
       const msgs = ChatHistory.load(sid)
       if (msgs.length === 0) { showMsg("Session is empty", theme.colors.warning); return }
@@ -116,30 +133,175 @@ export function Home(props: {
   const [aiMode, setAiMode] = createSignal<"" | "url" | "key" | "testing">("")
   const [aiUrl, setAiUrl] = createSignal("")
   const [aiKey, setAiKey] = createSignal("")
+  const [modelPicking, setModelPicking] = createSignal(false)
+  const [modelOptions, setModelOptions] = createSignal<ModelOption[]>([])
+  const [modelIdx, setModelIdx] = createSignal(0)
+  const [modelQuery, setModelQuery] = createSignal("")
+  const [modelLoading, setModelLoading] = createSignal(false)
+  let modelPreload: Promise<ModelOption[]> | undefined
+  const keyLog = process.env.CODEBLOG_DEBUG_KEYS === "1" ? Log.create({ service: "tui-key" }) : undefined
+  const toHex = (value: string) => Array.from(value).map((ch) => ch.charCodeAt(0).toString(16).padStart(2, "0")).join(" ")
+
+  function tone(color: string): ChatMsg["tone"] {
+    if (color === theme.colors.success) return "success"
+    if (color === theme.colors.warning) return "warning"
+    if (color === theme.colors.error) return "error"
+    return "info"
+  }
 
   function showMsg(text: string, color = "#6a737c") {
-    setMessage(text)
-    setMessageColor(color)
+    ensureSession()
+    setMessages((p) => [...p, { role: "system", content: text, tone: tone(color) }])
   }
 
   function clearChat() {
-    setMessages([]); setStreamText(""); setStreaming(false); setMessage("")
+    abortByUser = true
+    abortCtrl?.abort()
+    abortCtrl = undefined
+    setMessages([])
+    setStreamText("")
+    setStreaming(false)
+    setInput("")
+    setSelectedIdx(0)
+    setModelPicking(false)
+    setModelOptions([])
+    setModelIdx(0)
+    setModelQuery("")
     sessionId = ""
   }
 
+  async function loadModelOptions(force = false): Promise<ModelOption[]> {
+    if (!props.hasAI) return []
+    const cached = untrack(() => modelOptions())
+    if (!force && cached.length > 0) return cached
+    if (modelPreload) return modelPreload
+
+    modelPreload = (async () => {
+      try {
+        setModelLoading(true)
+        const { AIProvider } = await import("../../ai/provider")
+        const { Config } = await import("../../config")
+        const cfg = await Config.load()
+        const current = cfg.model || AIProvider.DEFAULT_MODEL
+        const currentBuiltin = AIProvider.BUILTIN_MODELS[current]
+        const currentProvider =
+          cfg.default_provider ||
+          (current.includes("/") ? current.split("/")[0] : currentBuiltin?.providerID) ||
+          "openai"
+        const providerCfg = cfg.providers?.[currentProvider]
+        const providerApi = providerCfg?.api || providerCfg?.compat_profile || (currentProvider === "openai" ? "openai" : "openai-compatible")
+        const providerKey = providerCfg?.api_key
+        const providerBase = providerCfg?.base_url || (currentProvider === "openai" ? "https://api.openai.com" : "")
+
+        const remote = await (async () => {
+          if (!providerKey || !providerBase) return [] as string[]
+          if (providerApi !== "openai" && providerApi !== "openai-compatible") return [] as string[]
+          try {
+            const clean = providerBase.replace(/\/+$/, "")
+            const url = clean.endsWith("/v1") ? `${clean}/models` : `${clean}/v1/models`
+            const r = await fetch(url, {
+              headers: { Authorization: `Bearer ${providerKey}` },
+              signal: AbortSignal.timeout(8000),
+            })
+            if (!r.ok) return []
+            const data = await r.json() as { data?: Array<{ id: string }> }
+            return data.data?.map((m) => m.id).filter(Boolean) || []
+          } catch {
+            return []
+          }
+        })()
+
+        const fromRemote = remote.map((id) => {
+          const saveId = currentProvider === "openai-compatible" && !id.includes("/") ? `openai-compatible/${id}` : id
+          return { id: saveId, label: `${saveId}  [${currentProvider}]` }
+        })
+        const list = await AIProvider.available()
+        const fromAvailable = list
+          .filter((m) => m.hasKey)
+          .map((m) => {
+            const id = m.model.providerID === "openai-compatible" ? `openai-compatible/${m.model.id}` : m.model.id
+            const provider = m.model.providerID
+            return { id, label: `${id}${provider ? `  [${provider}]` : ""}` }
+          })
+        const unique = Array.from(new Map([...fromRemote, ...fromAvailable].map((m) => [m.id, m])).values())
+        setModelOptions(unique)
+        return unique
+      } finally {
+        setModelLoading(false)
+      }
+    })()
+
+    const out = await modelPreload
+    modelPreload = undefined
+    return out
+  }
+
+  async function openModelPicker() {
+    if (!props.hasAI) {
+      showMsg("/model requires AI. Type /ai to configure.", theme.colors.warning)
+      return
+    }
+    setModelQuery("")
+    setModelPicking(true)
+    const cached = modelOptions()
+    if (cached.length === 0) await loadModelOptions(true)
+    else void loadModelOptions(true)
+
+    const current = props.modelName
+    const next = modelOptions()
+    if (next.length === 0) {
+      setModelPicking(false)
+      showMsg("No available models. Configure provider with /ai first.", theme.colors.warning)
+      return
+    }
+    setModelIdx(Math.max(0, next.findIndex((m) => m.id === current)))
+    showMsg("Model picker: use ↑/↓ then Enter (Esc to cancel), type to search", theme.colors.textMuted)
+  }
+
+  async function pickModel(id: string) {
+    try {
+      const { Config } = await import("../../config")
+      await Config.save({ model: id })
+      props.onAIConfigured()
+      showMsg(`Set model to ${id}`, theme.colors.success)
+    } catch (err) {
+      showMsg(`Failed to switch model: ${err instanceof Error ? err.message : String(err)}`, theme.colors.error)
+    } finally {
+      setModelPicking(false)
+      setModelIdx(0)
+      setModelQuery("")
+      void loadModelOptions(true)
+    }
+  }
+
+  onMount(() => {
+    if (!props.hasAI) return
+    void loadModelOptions(true)
+  })
+
+  createEffect(() => {
+    if (!props.hasAI) {
+      setModelOptions([])
+      return
+    }
+    props.modelName
+    void loadModelOptions(false)
+  })
+
   const commands = createCommands({
     showMsg,
-    navigate: route.navigate,
+    openModelPicker,
     exit,
     onLogin: props.onLogin,
     onLogout: props.onLogout,
     clearChat,
     startAIConfig: () => {
       setAiUrl(""); setAiKey(""); setAiMode("url")
-      showMsg("Paste your API URL (or press Enter to skip):", theme.colors.primary)
+      showMsg("Quick setup: paste API URL (or press Enter to skip). Full wizard: `codeblog ai setup`", theme.colors.primary)
     },
     setMode: theme.setMode,
     send,
+    onAIConfigured: props.onAIConfigured,
     resume: resumeSession,
     listSessions: () => { try { return ChatHistory.list(10) } catch { return [] } },
     hasAI: props.hasAI,
@@ -157,6 +319,7 @@ export function Home(props: {
   const showAutocomplete = createMemo(() => {
     const v = input()
     if (aiMode()) return false
+    if (modelPicking()) return false
     if (!v.startsWith("/")) return false
     if (v.includes(" ")) return false
     return filtered().length > 0
@@ -185,6 +348,43 @@ export function Home(props: {
     return filtered().slice(start, start + 8)
   })
 
+  const modelFiltered = createMemo(() => {
+    const list = modelOptions()
+    const query = modelQuery().trim().toLowerCase()
+    if (!query) return list
+    return list.filter((m) => m.id.toLowerCase().includes(query) || m.label.toLowerCase().includes(query))
+  })
+
+  const modelVisibleStart = createMemo(() => {
+    const len = modelFiltered().length
+    if (len <= 8) return 0
+    const max = len - 8
+    const idx = modelIdx()
+    return Math.max(0, Math.min(idx - 3, max))
+  })
+
+  const modelVisibleItems = createMemo(() => {
+    const start = modelVisibleStart()
+    return modelFiltered().slice(start, start + 8)
+  })
+
+  createEffect(() => {
+    const len = modelFiltered().length
+    const idx = modelIdx()
+    if (len === 0 && idx !== 0) {
+      setModelIdx(0)
+      return
+    }
+    if (idx >= len) setModelIdx(len - 1)
+  })
+
+  const offInputIntent = onInputIntent((intent) => {
+    if (intent !== "newline" || aiMode()) return
+    setInput((s) => s + "\n")
+    setSelectedIdx(0)
+  })
+  onCleanup(() => offInputIntent())
+
   usePaste((evt) => {
     // For URL/key modes, strip newlines; for normal input, preserve them
     if (aiMode() === "url" || aiMode() === "key") {
@@ -201,134 +401,124 @@ export function Home(props: {
     setInput((s) => s + text)
   })
 
-  async function send(text: string) {
+  async function send(text: string, options?: { display?: string }) {
     if (!text.trim() || streaming()) return
     ensureSession()
-    const userMsg: ChatMsg = { role: "user", content: text.trim() }
+    const prompt = text.trim()
+    const userMsg: ChatMsg = { role: "user", content: options?.display || commandDisplay || prompt, modelContent: prompt }
     const prev = messages()
     setMessages([...prev, userMsg])
     setStreaming(true)
     setStreamText("")
-    setMessage("")
-    let summaryStreamActive = false
+    abortByUser = false
+    const assembler = new TuiStreamAssembler()
+    const toolResults: Array<{ name: string; result: string }> = []
+    const flushMs = 60
+    let flushTimer: ReturnType<typeof setTimeout> | undefined
+
+    const flushStream = (force = false) => {
+      if (force) {
+        if (flushTimer) clearTimeout(flushTimer)
+        flushTimer = undefined
+        setStreamText(assembler.getText())
+        return
+      }
+      if (flushTimer) return
+      flushTimer = setTimeout(() => {
+        flushTimer = undefined
+        setStreamText(assembler.getText())
+      }, flushMs)
+    }
 
     try {
       const { AIChat } = await import("../../ai/chat")
-      const { Config } = await import("../../config")
       const { AIProvider } = await import("../../ai/provider")
-      const { Log } = await import("../../util/log")
-      const sendLog = Log.create({ service: "home-send" })
+      const { Config } = await import("../../config")
       const cfg = await Config.load()
       const mid = cfg.model || AIProvider.DEFAULT_MODEL
-      const allMsgs = [...prev, userMsg].filter((m) => m.role !== "tool").map((m) => ({ role: m.role as "user" | "assistant", content: m.content }))
-      let full = ""
-      let hasToolCalls = false
-      let lastToolName = ""
-      let lastToolResult = ""
+      const allMsgs = [...prev, userMsg]
+        .filter((m): m is ChatMsg & { role: "user" | "assistant" } => m.role === "user" || m.role === "assistant")
+        .map((m) => ({ role: m.role, content: m.modelContent || m.content }))
       abortCtrl = new AbortController()
-      sendLog.info("calling AIChat.stream", { model: mid, msgCount: allMsgs.length })
-      await AIChat.stream(allMsgs, {
-        onToken: (token) => { full += token; setStreamText(full) },
-        onToolCall: (name) => {
+
+      let hasToolCalls = false
+      let finalizedText = ""
+      for await (const event of AIChat.streamEvents(allMsgs, mid, abortCtrl.signal, { maxSteps: 10 })) {
+        if (event.type === "text-delta") {
+          assembler.pushDelta(event.text, event.seq)
+          flushStream()
+          continue
+        }
+
+        if (event.type === "tool-start") {
           hasToolCalls = true
-          lastToolName = name
-          sendLog.info("onToolCall", { name })
-          // Save any accumulated text as assistant message before tool
-          if (full.trim()) {
-            setMessages((p) => [...p, { role: "assistant", content: full.trim() }])
-            full = ""
+          const partial = assembler.getText().trim()
+          if (partial) {
+            setMessages((p) => [...p, { role: "assistant", content: partial }])
+            assembler.reset()
             setStreamText("")
           }
-          setMessages((p) => [...p, { role: "tool", content: TOOL_LABELS[name] || name, toolName: name, toolStatus: "running" }])
-        },
-        onToolResult: (name, result) => {
-          sendLog.info("onToolResult", { name })
+          setMessages((p) => [...p, { role: "tool", content: TOOL_LABELS[event.name] || event.name, toolName: event.name, toolCallID: event.callID, toolStatus: "running" }])
+          continue
+        }
+
+        if (event.type === "tool-result") {
           try {
-            const str = typeof result === "string" ? result : JSON.stringify(result)
-            lastToolResult = str.slice(0, 6000)
-          } catch { lastToolResult = "" }
-          setMessages((p) => p.map((m) =>
-            m.role === "tool" && m.toolName === name && m.toolStatus === "running"
-              ? { ...m, toolStatus: "done" as const }
-              : m
-          ))
-        },
-        onFinish: () => {
-          sendLog.info("onFinish", { fullLength: full.length, hasToolCalls, hasToolResult: !!lastToolResult })
-          if (full.trim()) {
-            setMessages((p) => [...p, { role: "assistant", content: full.trim() }])
-            setStreamText(""); setStreaming(false)
-            saveChat()
-          } else if (hasToolCalls && lastToolResult) {
-            // Tool executed but model didn't summarize — send a follow-up request
-            // to have the model produce a natural-language summary
-            sendLog.info("auto-summarizing tool result", { tool: lastToolName })
-            full = ""
-            setStreamText("")
-            const summaryMsgs = [
-              ...allMsgs,
-              { role: "assistant" as const, content: `I used the ${lastToolName} tool. Here are the results:\n${lastToolResult}` },
-              { role: "user" as const, content: "Please summarize these results in a helpful, natural way." },
-            ]
-            // NOTE: intentionally not awaited — the outer await resolves here,
-            // but streaming state is managed by the inner callbacks.
-            // The finally block must NOT reset streaming in this path.
-            summaryStreamActive = true
-            AIChat.stream(summaryMsgs, {
-              onToken: (token) => { full += token; setStreamText(full) },
-              onFinish: () => {
-                if (full.trim()) {
-                  setMessages((p) => [...p, { role: "assistant", content: full.trim() }])
-                } else {
-                  setMessages((p) => [...p, { role: "assistant", content: "(Tool executed — model did not respond)" }])
-                }
-                setStreamText(""); setStreaming(false)
-                saveChat()
-              },
-              onError: (err) => {
-                sendLog.info("summary stream error", { message: err.message })
-                setMessages((p) => [...p, { role: "assistant", content: `Tool result received but summary failed: ${err.message}` }])
-                setStreamText(""); setStreaming(false)
-                saveChat()
-              },
-            }, mid, abortCtrl?.signal)
-          } else if (hasToolCalls) {
-            setMessages((p) => [...p, { role: "assistant", content: "(Tool executed — no response from model)" }])
-            setStreamText(""); setStreaming(false)
-            saveChat()
-          } else {
-            setStreamText(""); setStreaming(false)
-            saveChat()
-          }
-        },
-        onError: (err) => {
-          sendLog.info("onError", { message: err.message })
+            const str = typeof event.result === "string" ? event.result : JSON.stringify(event.result)
+            toolResults.push({ name: event.name, result: str.slice(0, 1200) })
+          } catch {}
           setMessages((p) => {
-            // Mark any running tools as error
+            let matched = false
+            const next = p.map((m) => {
+              if (m.role !== "tool" || m.toolStatus !== "running") return m
+              if (m.toolCallID !== event.callID) return m
+              matched = true
+              return { ...m, toolStatus: "done" as const }
+            })
+            if (matched) return next
+            return p.map((m) =>
+              m.role === "tool" && m.toolName === event.name && m.toolStatus === "running"
+                ? { ...m, toolStatus: "done" as const }
+                : m
+            )
+          })
+          continue
+        }
+
+        if (event.type === "error") {
+          setMessages((p) => {
             const updated = p.map((m) =>
               m.role === "tool" && m.toolStatus === "running"
                 ? { ...m, toolStatus: "error" as const }
                 : m
             )
-            return [...updated, { role: "assistant" as const, content: `Error: ${err.message}` }]
+            return [...updated, { role: "assistant" as const, content: `Error: ${event.error.message}` }]
           })
-          setStreamText(""); setStreaming(false)
-          saveChat()
-        },
-      }, mid, abortCtrl.signal, { maxSteps: 10 })
-      sendLog.info("AIChat.stream returned normally")
-      abortCtrl = undefined
+          continue
+        }
+
+        if (event.type === "run-finish") {
+          finalizedText = assembler.pushFinal(event.text).trim()
+          flushStream(true)
+          const content = resolveAssistantContent({
+            finalText: finalizedText,
+            aborted: event.aborted,
+            abortByUser,
+            hasToolCalls,
+            toolResults,
+          })
+          if (content) setMessages((p) => [...p, { role: "assistant", content }])
+        }
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      // Can't use sendLog here because it might not be in scope
       setMessages((p) => [...p, { role: "assistant", content: `Error: ${msg}` }])
-      saveChat()
     } finally {
-      // Clean up streaming state — but NOT if a summary stream is still running
-      if (!summaryStreamActive) {
-        setStreamText("")
-        setStreaming(false)
-      }
+      if (flushTimer) clearTimeout(flushTimer)
+      abortCtrl = undefined
+      setStreamText("")
+      setStreaming(false)
+      saveChat()
     }
   }
 
@@ -391,7 +581,12 @@ export function Home(props: {
         }
         setInput("")
         setSelectedIdx(0)
-        sel.action(sel.name.split(/\s+/))
+        commandDisplay = sel.name
+        try {
+          await sel.action(sel.name.split(/\s+/))
+        } finally {
+          commandDisplay = ""
+        }
         return
       }
     }
@@ -410,7 +605,12 @@ export function Home(props: {
           showMsg(`${cmd} requires AI. Type /ai to configure.`, theme.colors.warning)
           return
         }
-        match.action(parts)
+        commandDisplay = text
+        try {
+          await match.action(parts)
+        } finally {
+          commandDisplay = ""
+        }
         return
       }
       if (cmd === "/quit" || cmd === "/q") { exit(); return }
@@ -423,13 +623,58 @@ export function Home(props: {
       return
     }
 
-    send(text)
+    send(text, { display: text })
   }
 
   useKeyboard((evt) => {
+    if (evt.name === "leftshift" || evt.name === "rightshift" || evt.name === "shift") {
+      shiftDown = evt.eventType !== "release"
+      evt.preventDefault()
+      return
+    }
+    if (evt.eventType === "release") return
+
+    const submitKey = evt.name === "return" || evt.name === "enter"
+    const raw = evt.raw || ""
+    const seq = evt.sequence || ""
+    const rawReturn = raw === "\r" || seq === "\r" || raw.endsWith("\r") || seq.endsWith("\r")
+    const submitFromRawOnly = !submitKey && rawReturn
+    if (keyLog && (submitKey || evt.name === "linefeed" || evt.name === "" || evt.name === "leftshift" || evt.name === "rightshift" || evt.name === "shift")) {
+      keyLog.info("submit-key", {
+        name: evt.name,
+        eventType: evt.eventType,
+        shift: evt.shift,
+        ctrl: evt.ctrl,
+        meta: evt.meta,
+        source: evt.source,
+        raw,
+        sequence: seq,
+        rawHex: toHex(raw),
+        sequenceHex: toHex(seq),
+      })
+    }
+    const shiftFromRaw = isShiftEnterSequence(raw) || isShiftEnterSequence(seq) || raw.includes(";2u") || seq.includes(";2u")
+    const shift = evt.shift || shiftDown || shiftFromRaw
+    const newlineFromRaw = raw === "\n" || seq === "\n" || raw === "\r\n" || seq === "\r\n"
+    const modifiedSubmitFromRaw =
+      (submitKey && raw.startsWith("\x1b[") && raw.endsWith("~")) ||
+      (submitKey && seq.startsWith("\x1b[") && seq.endsWith("~")) ||
+      (submitKey && raw.includes(";13")) ||
+      (submitKey && seq.includes(";13"))
+    const newlineKey =
+      evt.name === "linefeed" ||
+      newlineFromRaw ||
+      isShiftEnterSequence(raw) ||
+      isShiftEnterSequence(seq) ||
+      (submitFromRawOnly && (shiftDown || raw.startsWith("\x1b") || seq.startsWith("\x1b")) && !evt.ctrl) ||
+      (modifiedSubmitFromRaw && !evt.ctrl) ||
+      (submitKey && shift && !evt.ctrl && !evt.meta) ||
+      (submitKey && evt.meta && !evt.ctrl) ||
+      (evt.name === "j" && evt.ctrl && !evt.meta)
+
     if (aiMode() === "url") {
-      if (evt.name === "return") { handleSubmit(); evt.preventDefault(); return }
-      if (evt.name === "escape") { setAiMode(""); setMessage(""); evt.preventDefault(); return }
+      if (submitKey || newlineKey) { handleSubmit(); evt.preventDefault(); return }
+      if (evt.name === "escape") { setAiMode(""); evt.preventDefault(); return }
       if (evt.name === "backspace") { setAiUrl((s) => s.slice(0, -1)); evt.preventDefault(); return }
       if (evt.sequence && evt.sequence.length >= 1 && !evt.ctrl && !evt.meta) {
         const clean = evt.sequence.replace(/[\x00-\x1f\x7f]/g, "")
@@ -439,7 +684,7 @@ export function Home(props: {
       return
     }
     if (aiMode() === "key") {
-      if (evt.name === "return") { handleSubmit(); evt.preventDefault(); return }
+      if (submitKey || newlineKey) { handleSubmit(); evt.preventDefault(); return }
       if (evt.name === "escape") { setAiMode("url"); setAiKey(""); showMsg("Paste your API URL (or press Enter to skip):", theme.colors.primary); evt.preventDefault(); return }
       if (evt.name === "backspace") { setAiKey((s) => s.slice(0, -1)); evt.preventDefault(); return }
       if (evt.sequence && evt.sequence.length >= 1 && !evt.ctrl && !evt.meta) {
@@ -447,6 +692,63 @@ export function Home(props: {
         if (clean) { setAiKey((s) => s + clean); evt.preventDefault(); return }
       }
       if (evt.name === "space") { setAiKey((s) => s + " "); evt.preventDefault(); return }
+      return
+    }
+
+    if (modelPicking()) {
+      if (evt.name === "up" || evt.name === "k") {
+        const len = modelFiltered().length
+        if (len > 0) setModelIdx((i) => (i - 1 + len) % len)
+        evt.preventDefault()
+        return
+      }
+      if (evt.name === "down" || evt.name === "j") {
+        const len = modelFiltered().length
+        if (len > 0) setModelIdx((i) => (i + 1) % len)
+        evt.preventDefault()
+        return
+      }
+      if (submitKey || evt.name === "enter") {
+        const selected = modelFiltered()[modelIdx()]
+        if (selected) void pickModel(selected.id)
+        evt.preventDefault()
+        return
+      }
+      if (evt.name === "backspace") {
+        setModelQuery((q) => q.slice(0, -1))
+        setModelIdx(0)
+        evt.preventDefault()
+        return
+      }
+      if (evt.name === "escape") {
+        if (modelQuery()) {
+          setModelQuery("")
+          setModelIdx(0)
+          evt.preventDefault()
+          return
+        }
+        setModelPicking(false)
+        setModelIdx(0)
+        setModelQuery("")
+        showMsg("Model switch canceled", theme.colors.textMuted)
+        evt.preventDefault()
+        return
+      }
+      if (evt.sequence && evt.sequence.length >= 1 && !evt.ctrl && !evt.meta) {
+        const clean = evt.sequence.replace(/[\x00-\x1f\x7f]/g, "")
+        if (clean) {
+          setModelQuery((q) => q + clean)
+          setModelIdx(0)
+          evt.preventDefault()
+          return
+        }
+      }
+      if (evt.name === "space") {
+        setModelQuery((q) => q + " ")
+        setModelIdx(0)
+        evt.preventDefault()
+        return
+      }
       return
     }
 
@@ -470,30 +772,36 @@ export function Home(props: {
 
     // Escape while streaming → abort; while chatting → clear
     if (evt.name === "escape" && streaming()) {
+      abortByUser = true
       abortCtrl?.abort()
-      const cur = streamText()
-      if (cur.trim()) setMessages((p) => [...p, { role: "assistant", content: cur.trim() + "\n\n(interrupted)" }])
-      setStreamText(""); setStreaming(false)
-      saveChat()
       evt.preventDefault(); return
     }
     if (evt.name === "escape" && chatting() && !streaming()) { clearChat(); evt.preventDefault(); return }
 
-    if (evt.name === "return" && !evt.shift) { handleSubmit(); evt.preventDefault(); return }
-    if (evt.name === "return" && evt.shift) { setInput((s) => s + "\n"); evt.preventDefault(); return }
+    if (submitKey && !shift && !evt.ctrl && !evt.meta && !modifiedSubmitFromRaw) { handleSubmit(); evt.preventDefault(); return }
+    if (newlineKey) { setInput((s) => s + "\n"); evt.preventDefault(); return }
     if (evt.name === "backspace") { setInput((s) => s.slice(0, -1)); setSelectedIdx(0); evt.preventDefault(); return }
     if (evt.sequence && evt.sequence.length >= 1 && !evt.ctrl && !evt.meta) {
       const clean = evt.sequence.replace(/[\x00-\x1f\x7f]/g, "")
       if (clean) { setInput((s) => s + clean); setSelectedIdx(0); evt.preventDefault(); return }
     }
     if (evt.name === "space") { setInput((s) => s + " "); evt.preventDefault(); return }
-  })
+  }, { release: true })
 
   return (
     <box flexDirection="column" flexGrow={1} paddingLeft={2} paddingRight={2}>
-      {/* When no chat: show logo centered */}
-      <Show when={!chatting()}>
-        <box flexGrow={1} minHeight={0} />
+      <scrollbox
+        flexGrow={1}
+        paddingTop={1}
+        stickyScroll={true}
+        stickyStart="bottom"
+        verticalScrollbarOptions={{ visible: false }}
+        horizontalScrollbarOptions={{ visible: false }}
+      >
+        <Show when={!chatting()}>
+          <box flexGrow={1} minHeight={0} />
+        </Show>
+
         <box flexShrink={0} flexDirection="column" alignItems="center">
           {LOGO.map((line, i) => (
             <text fg={i < 4 ? theme.colors.logo1 : theme.colors.logo2}>{line}</text>
@@ -501,7 +809,6 @@ export function Home(props: {
           <box height={1} />
           <text fg={theme.colors.textMuted}>The AI-powered coding forum</text>
 
-          {/* Status info below logo */}
           <box height={1} />
           <box flexDirection="column" alignItems="center" gap={0}>
             <box flexDirection="row" gap={1}>
@@ -530,16 +837,42 @@ export function Home(props: {
               </Show>
             </box>
           </box>
-        </box>
-      </Show>
 
-      {/* When chatting: messages fill the space */}
-      <Show when={chatting()}>
-        <scrollbox flexGrow={1} paddingTop={1} stickyScroll={true} stickyStart="bottom">
-          <For each={messages()}>
-            {(msg) => (
+          <Show when={props.loggedIn}>
+            <box flexDirection="row" paddingTop={1}>
+              <text fg={theme.colors.warning} flexShrink={0}>● Tip </text>
+              <text fg={theme.colors.textMuted}>{tipPool()[tipIdx % tipPool().length]}</text>
+            </box>
+          </Show>
+        </box>
+
+        <For each={renderRows()}>
+          {(row) => {
+            if (row.role === "stream") {
+              return (
+                <box flexShrink={0} paddingBottom={1}>
+                  <Show when={streamText()}>
+                    <code
+                      filetype="markdown"
+                      drawUnstyledText={false}
+                      streaming={true}
+                      syntaxStyle={syntaxStyle()}
+                      content={streamText()}
+                      conceal={true}
+                      fg={theme.colors.text}
+                    />
+                  </Show>
+                  <Show when={!streamText()}>
+                    <text fg={theme.colors.textMuted} wrapMode="word">
+                      {"◆ " + shimmerText()}
+                    </text>
+                  </Show>
+                </box>
+              )
+            }
+            const msg = row
+            return (
               <box flexShrink={0}>
-                {/* User message — bold with ❯ prefix */}
                 <Show when={msg.role === "user"}>
                   <box flexDirection="row" paddingBottom={1}>
                     <text fg={theme.colors.primary} flexShrink={0}>
@@ -550,7 +883,6 @@ export function Home(props: {
                     </text>
                   </box>
                 </Show>
-                {/* Tool execution — ⚙/✓ icon + tool name + status */}
                 <Show when={msg.role === "tool"}>
                   <box flexDirection="row" paddingLeft={2}>
                     <text fg={msg.toolStatus === "done" ? theme.colors.success : msg.toolStatus === "error" ? theme.colors.error : theme.colors.warning} flexShrink={0}>
@@ -561,7 +893,6 @@ export function Home(props: {
                     </text>
                   </box>
                 </Show>
-                {/* Assistant message — ◆ prefix */}
                 <Show when={msg.role === "assistant"}>
                   <box paddingBottom={1} flexShrink={0}>
                     <code
@@ -574,39 +905,49 @@ export function Home(props: {
                     />
                   </box>
                 </Show>
+                <Show when={msg.role === "system"}>
+                  <box flexDirection="row" paddingLeft={2} paddingBottom={1}>
+                    <text
+                      fg={
+                        msg.tone === "success"
+                          ? theme.colors.success
+                          : msg.tone === "warning"
+                            ? theme.colors.warning
+                            : msg.tone === "error"
+                              ? theme.colors.error
+                              : theme.colors.textMuted
+                      }
+                      flexShrink={0}
+                    >
+                      {"└ "}
+                    </text>
+                    <text
+                      fg={
+                        msg.tone === "success"
+                          ? theme.colors.success
+                          : msg.tone === "warning"
+                            ? theme.colors.warning
+                            : msg.tone === "error"
+                              ? theme.colors.error
+                              : theme.colors.textMuted
+                      }
+                      wrapMode="word"
+                      flexGrow={1}
+                      flexShrink={1}
+                    >
+                      {msg.content}
+                    </text>
+                  </box>
+                </Show>
               </box>
-            )}
-          </For>
-          <box
-            flexShrink={0}
-            paddingBottom={streaming() ? 1 : 0}
-            height={streaming() ? undefined : 0}
-            overflow="hidden"
-          >
-            <Show when={streaming() && streamText()}>
-              <code
-                filetype="markdown"
-                drawUnstyledText={false}
-                streaming={true}
-                syntaxStyle={syntaxStyle()}
-                content={streamText()}
-                conceal={true}
-                fg={theme.colors.text}
-              />
-            </Show>
-            <Show when={streaming() && !streamText()}>
-              <text fg={theme.colors.textMuted} wrapMode="word">
-                {"◆ " + shimmerText()}
-              </text>
-            </Show>
-          </box>
-        </scrollbox>
-      </Show>
+            )
+          }}
+        </For>
 
-      {/* Spacer when no chat and no autocomplete */}
-      <Show when={!chatting()}>
-        <box flexGrow={1} minHeight={0} />
-      </Show>
+        <Show when={!chatting()}>
+          <box flexGrow={1} minHeight={0} />
+        </Show>
+      </scrollbox>
 
       {/* Prompt — always at bottom */}
       <box flexShrink={0} paddingTop={1} paddingBottom={1}>
@@ -636,6 +977,41 @@ export function Home(props: {
         </Show>
         <Show when={!aiMode()}>
           <box flexDirection="column">
+            <Show when={modelPicking()}>
+              <box flexDirection="column" paddingBottom={1}>
+                <text fg={theme.colors.textMuted}>{"  /model — choose with ↑/↓, Enter to confirm, Esc to cancel"}</text>
+                <box flexDirection="row">
+                  <text fg={theme.colors.textMuted}>{"  search: "}</text>
+                  <text fg={theme.colors.input}>{modelQuery()}</text>
+                  <text fg={theme.colors.cursor}>{"█"}</text>
+                </box>
+                <Show when={modelLoading()}>
+                  <text fg={theme.colors.textMuted}>{"  Loading models..."}</text>
+                </Show>
+                <Show when={modelVisibleStart() > 0}>
+                  <text fg={theme.colors.textMuted}>{"  ↑ more models"}</text>
+                </Show>
+                <For each={modelVisibleItems()}>
+                  {(option, i) => {
+                    const selected = () => i() + modelVisibleStart() === modelIdx()
+                    const current = () => option.id === props.modelName
+                    return (
+                      <box flexDirection="row" backgroundColor={selected() ? theme.colors.primary : undefined}>
+                        <text fg={selected() ? "#ffffff" : theme.colors.text}>
+                          {"  " + (selected() ? "● " : "○ ") + option.label + (current() ? "  (current)" : "")}
+                        </text>
+                      </box>
+                    )
+                  }}
+                </For>
+                <Show when={modelFiltered().length === 0 && !modelLoading()}>
+                  <text fg={theme.colors.warning}>{"  No matched models"}</text>
+                </Show>
+                <Show when={modelVisibleStart() + modelVisibleItems().length < modelFiltered().length}>
+                  <text fg={theme.colors.textMuted}>{"  ↓ more models"}</text>
+                </Show>
+              </box>
+            </Show>
             {/* Command autocomplete — above prompt */}
             <Show when={showAutocomplete()}>
               <box flexDirection="column" paddingBottom={1}>
@@ -663,17 +1039,6 @@ export function Home(props: {
                 </Show>
               </box>
             </Show>
-            {/* Message feedback */}
-            <Show when={message() && !showAutocomplete()}>
-              <text fg={messageColor()} flexShrink={0}>{message()}</text>
-            </Show>
-            {/* Tip */}
-            <Show when={!showAutocomplete() && !message() && !chatting() && props.loggedIn}>
-              <box flexDirection="row" paddingBottom={1}>
-                <text fg={theme.colors.warning} flexShrink={0}>● Tip </text>
-                <text fg={theme.colors.textMuted}>{tipPool()[tipIdx % tipPool().length]}</text>
-              </box>
-            </Show>
             {/* Input line with blinking cursor */}
             <box flexDirection="column">
               {(() => {
@@ -682,7 +1047,7 @@ export function Home(props: {
                   <box flexDirection="row">
                     <text fg={theme.colors.primary}><span style={{ bold: true }}>{i === 0 ? "❯ " : "  "}</span></text>
                     <text fg={theme.colors.input}>{line}</text>
-                    {i === lines.length - 1 && <text fg={theme.colors.cursor} style={{ bold: true }}>{"█"}</text>}
+                    {i === lines.length - 1 && <text fg={theme.colors.cursor}><span style={{ bold: true }}>{"█"}</span></text>}
                   </box>
                 ))
               })()}

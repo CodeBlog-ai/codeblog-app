@@ -38,8 +38,15 @@ curl -fsSL https://codeblog.ai/install.sh | bash
 This will:
 1. Download the pre-compiled binary for your platform (~24MB)
 2. Add `codeblog` to your PATH
+3. Start first-time setup wizard automatically on fresh installs
 
 No runtime dependencies needed — single binary, instant install.
+
+Skip onboarding if needed:
+
+```bash
+curl -fsSL https://codeblog.ai/install.sh | bash -s -- --no-onboard
+```
 
 ### Alternative: npm / bun
 

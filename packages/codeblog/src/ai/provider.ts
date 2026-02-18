@@ -5,13 +5,13 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
 import { type LanguageModel, type Provider as SDK } from "ai"
 import { Config } from "../config"
 import { Log } from "../util/log"
+import { BUILTIN_MODELS as CORE_MODELS, DEFAULT_MODEL as CORE_DEFAULT_MODEL, type ModelInfo as CoreModelInfo } from "./models"
+import { loadProviders, PROVIDER_BASE_URL_ENV, PROVIDER_ENV, routeModel } from "./provider-registry"
+import { patchRequestByCompat, resolveCompat, type ModelApi, type ModelCompatConfig } from "./types"
 
 const log = Log.create({ service: "ai-provider" })
 
 export namespace AIProvider {
-  // ---------------------------------------------------------------------------
-  // Bundled providers (4 core)
-  // ---------------------------------------------------------------------------
   const BUNDLED_PROVIDERS: Record<string, (options: any) => SDK> = {
     "@ai-sdk/anthropic": createAnthropic as any,
     "@ai-sdk/openai": createOpenAI as any,
@@ -19,65 +19,17 @@ export namespace AIProvider {
     "@ai-sdk/openai-compatible": createOpenAICompatible as any,
   }
 
-  // ---------------------------------------------------------------------------
-  // Provider env key mapping
-  // ---------------------------------------------------------------------------
-  const PROVIDER_ENV: Record<string, string[]> = {
-    anthropic: ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"],
-    openai: ["OPENAI_API_KEY"],
-    google: ["GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY"],
-    "openai-compatible": ["OPENAI_COMPATIBLE_API_KEY"],
-  }
-
-  // ---------------------------------------------------------------------------
-  // Provider base URL env mapping
-  // ---------------------------------------------------------------------------
-  const PROVIDER_BASE_URL_ENV: Record<string, string[]> = {
-    anthropic: ["ANTHROPIC_BASE_URL"],
-    openai: ["OPENAI_BASE_URL", "OPENAI_API_BASE"],
-    google: ["GOOGLE_API_BASE_URL"],
-    "openai-compatible": ["OPENAI_COMPATIBLE_BASE_URL"],
-  }
-
-  // ---------------------------------------------------------------------------
-  // Provider → npm package mapping
-  // ---------------------------------------------------------------------------
-  const PROVIDER_NPM: Record<string, string> = {
+  const PROVIDER_NPM: Record<ModelApi, string> = {
     anthropic: "@ai-sdk/anthropic",
     openai: "@ai-sdk/openai",
     google: "@ai-sdk/google",
     "openai-compatible": "@ai-sdk/openai-compatible",
   }
 
-  // ---------------------------------------------------------------------------
-  // Model info type
-  // ---------------------------------------------------------------------------
-  export interface ModelInfo {
-    id: string
-    providerID: string
-    name: string
-    contextWindow: number
-    outputTokens: number
-  }
+  export const BUILTIN_MODELS = CORE_MODELS
+  export const DEFAULT_MODEL = CORE_DEFAULT_MODEL
+  export type ModelInfo = CoreModelInfo
 
-  // ---------------------------------------------------------------------------
-  // Built-in model list
-  // ---------------------------------------------------------------------------
-  export const BUILTIN_MODELS: Record<string, ModelInfo> = {
-    "claude-sonnet-4-20250514": { id: "claude-sonnet-4-20250514", providerID: "anthropic", name: "Claude Sonnet 4", contextWindow: 200000, outputTokens: 16384 },
-    "claude-3-5-haiku-20241022": { id: "claude-3-5-haiku-20241022", providerID: "anthropic", name: "Claude 3.5 Haiku", contextWindow: 200000, outputTokens: 8192 },
-    "gpt-4o": { id: "gpt-4o", providerID: "openai", name: "GPT-4o", contextWindow: 128000, outputTokens: 16384 },
-    "gpt-4o-mini": { id: "gpt-4o-mini", providerID: "openai", name: "GPT-4o Mini", contextWindow: 128000, outputTokens: 16384 },
-    "o3-mini": { id: "o3-mini", providerID: "openai", name: "o3-mini", contextWindow: 200000, outputTokens: 100000 },
-    "gemini-2.5-flash": { id: "gemini-2.5-flash", providerID: "google", name: "Gemini 2.5 Flash", contextWindow: 1048576, outputTokens: 65536 },
-    "gemini-2.5-pro": { id: "gemini-2.5-pro", providerID: "google", name: "Gemini 2.5 Pro", contextWindow: 1048576, outputTokens: 65536 },
-  }
-
-  export const DEFAULT_MODEL = "claude-sonnet-4-20250514"
-
-  // ---------------------------------------------------------------------------
-  // Get API key for a provider
-  // ---------------------------------------------------------------------------
   export async function getApiKey(providerID: string): Promise<string | undefined> {
     const envKeys = PROVIDER_ENV[providerID] || []
     for (const key of envKeys) {
@@ -87,9 +39,6 @@ export namespace AIProvider {
     return cfg.providers?.[providerID]?.api_key
   }
 
-  // ---------------------------------------------------------------------------
-  // Get base URL for a provider
-  // ---------------------------------------------------------------------------
   export async function getBaseUrl(providerID: string): Promise<string | undefined> {
     const envKeys = PROVIDER_BASE_URL_ENV[providerID] || []
     for (const key of envKeys) {
@@ -99,9 +48,6 @@ export namespace AIProvider {
     return cfg.providers?.[providerID]?.base_url
   }
 
-  // ---------------------------------------------------------------------------
-  // List all available providers
-  // ---------------------------------------------------------------------------
   export async function listProviders(): Promise<Record<string, { name: string; models: string[]; hasKey: boolean }>> {
     const result: Record<string, { name: string; models: string[]; hasKey: boolean }> = {}
     for (const model of Object.values(BUILTIN_MODELS)) {
@@ -113,102 +59,136 @@ export namespace AIProvider {
         result[model.providerID]!.models.push(model.id)
       }
     }
+
     const compatKey = await getApiKey("openai-compatible")
-    if (compatKey) {
-      const compatBase = await getBaseUrl("openai-compatible")
-      const remoteModels = compatBase ? await fetchRemoteModels(compatBase, compatKey) : []
+    const compatBase = await getBaseUrl("openai-compatible")
+    if (compatKey && compatBase) {
+      const remoteModels = await fetchRemoteModels(compatBase, compatKey)
       result["openai-compatible"] = { name: "OpenAI Compatible", models: remoteModels, hasKey: true }
     }
+
+    const loaded = await loadProviders()
+    for (const provider of Object.values(loaded.providers)) {
+      if (result[provider.id]) continue
+      if (!provider.apiKey) continue
+      result[provider.id] = { name: provider.id, models: [], hasKey: true }
+    }
+
     return result
   }
 
-  // ---------------------------------------------------------------------------
-  // Get a LanguageModel instance
-  // ---------------------------------------------------------------------------
   const sdkCache = new Map<string, SDK>()
 
   export async function getModel(modelID?: string): Promise<LanguageModel> {
-    const id = modelID || (await getConfiguredModel()) || DEFAULT_MODEL
+    const useRegistry = await Config.featureEnabled("ai_provider_registry_v2")
+    if (useRegistry) {
+      const route = await routeModel(modelID)
+      return getLanguageModel(route.providerID, route.modelID, route.apiKey, undefined, route.baseURL, route.compat)
+    }
+    return getModelLegacy(modelID)
+  }
 
-    const builtin = BUILTIN_MODELS[id]
+  export async function resolveModelCompat(modelID?: string): Promise<ModelCompatConfig> {
+    const useRegistry = await Config.featureEnabled("ai_provider_registry_v2")
+    if (useRegistry) return (await routeModel(modelID)).compat
+    return (await resolveLegacyRoute(modelID)).compat
+  }
+
+  async function getModelLegacy(modelID?: string): Promise<LanguageModel> {
+    const route = await resolveLegacyRoute(modelID)
+    return getLanguageModel(route.providerID, route.modelID, route.apiKey, undefined, route.baseURL, route.compat)
+  }
+
+  async function resolveLegacyRoute(modelID?: string): Promise<{
+    providerID: string
+    modelID: string
+    apiKey: string
+    baseURL?: string
+    compat: ModelCompatConfig
+  }> {
+    const requested = modelID || (await getConfiguredModel()) || DEFAULT_MODEL
+    const cfg = await Config.load()
+
+    const builtin = BUILTIN_MODELS[requested]
     if (builtin) {
       const apiKey = await getApiKey(builtin.providerID)
       if (!apiKey) throw noKeyError(builtin.providerID)
-      const base = await getBaseUrl(builtin.providerID)
-      return getLanguageModel(builtin.providerID, id, apiKey, undefined, base)
+      const baseURL = await getBaseUrl(builtin.providerID)
+      return {
+        providerID: builtin.providerID,
+        modelID: requested,
+        apiKey,
+        baseURL,
+        compat: resolveCompat({ providerID: builtin.providerID, modelID: requested, providerConfig: cfg.providers?.[builtin.providerID] }),
+      }
     }
 
-    if (id.includes("/")) {
-      const [providerID, ...rest] = id.split("/")
-      const mid = rest.join("/")
+    if (requested.includes("/")) {
+      const [providerID, ...rest] = requested.split("/")
+      const modelID = rest.join("/")
       const apiKey = await getApiKey(providerID!)
       if (!apiKey) throw noKeyError(providerID!)
-      const base = await getBaseUrl(providerID!)
-      return getLanguageModel(providerID!, mid, apiKey, undefined, base)
+      const baseURL = await getBaseUrl(providerID!)
+      return {
+        providerID: providerID!,
+        modelID,
+        apiKey,
+        baseURL,
+        compat: resolveCompat({ providerID: providerID!, modelID, providerConfig: cfg.providers?.[providerID!] }),
+      }
     }
 
-    const cfg = await Config.load()
     if (cfg.providers) {
       for (const [providerID, p] of Object.entries(cfg.providers)) {
         if (!p.api_key) continue
-        const base = p.base_url || (await getBaseUrl(providerID))
-        if (base) {
-          log.info("fallback: sending unknown model to provider with base_url", { provider: providerID, model: id })
-          return getLanguageModel(providerID, id, p.api_key, undefined, base)
+        const baseURL = p.base_url || (await getBaseUrl(providerID))
+        if (!baseURL) continue
+        log.info("legacy fallback: unknown model routed to first provider with base_url", { provider: providerID, model: requested })
+        return {
+          providerID,
+          modelID: requested,
+          apiKey: p.api_key,
+          baseURL,
+          compat: resolveCompat({ providerID, modelID: requested, providerConfig: p }),
         }
       }
     }
 
-    throw new Error(`Unknown model: ${id}. Run: codeblog config --list`)
+    throw new Error(`Unknown model: ${requested}. Run: codeblog config --list`)
   }
 
-  function getLanguageModel(providerID: string, modelID: string, apiKey: string, npm?: string, baseURL?: string): LanguageModel {
-    // Auto-detect Anthropic models and use @ai-sdk/anthropic instead of openai-compatible
-    // This fixes streaming tool call argument parsing issues with openai-compatible provider
-    let pkg = npm || PROVIDER_NPM[providerID]
-
-    // Force Anthropic SDK for Claude models, even if provider is openai-compatible
-    if (modelID.startsWith("claude-") && pkg === "@ai-sdk/openai-compatible") {
+  function packageForCompat(compat: ModelCompatConfig): string {
+    let pkg = PROVIDER_NPM[compat.api]
+    if (compat.modelID.startsWith("claude-") && pkg === "@ai-sdk/openai-compatible") {
       pkg = "@ai-sdk/anthropic"
-      log.info("auto-detected Claude model, switching from openai-compatible to @ai-sdk/anthropic", { model: modelID })
+      log.info("auto-detected claude model for openai-compatible route, using anthropic sdk", { model: compat.modelID })
     }
+    return pkg
+  }
 
-    if (!pkg) {
-      pkg = "@ai-sdk/openai-compatible"
-    }
-
-    const cacheKey = `${providerID}:${pkg}:${apiKey.slice(0, 8)}`
-
-    log.info("loading model", { provider: providerID, model: modelID, pkg })
+  function getLanguageModel(
+    providerID: string,
+    modelID: string,
+    apiKey: string,
+    npm?: string,
+    baseURL?: string,
+    providedCompat?: ModelCompatConfig,
+  ): LanguageModel {
+    const compat = providedCompat || resolveCompat({ providerID, modelID })
+    const pkg = npm || packageForCompat(compat)
+    const cacheKey = `${providerID}:${pkg}:${compat.cacheKey}:${apiKey.slice(0, 8)}:${baseURL || ""}`
 
     let sdk = sdkCache.get(cacheKey)
     if (!sdk) {
       const createFn = BUNDLED_PROVIDERS[pkg]
-      if (!createFn) throw new Error(`No bundled provider for ${pkg}. Use openai-compatible with a base URL instead.`)
+      if (!createFn) throw new Error(`No bundled provider for ${pkg}.`)
       const opts: Record<string, unknown> = { apiKey, name: providerID }
       if (baseURL) {
         const clean = baseURL.replace(/\/+$/, "")
         opts.baseURL = clean.endsWith("/v1") ? clean : `${clean}/v1`
       }
-      // For openai-compatible providers, normalize request body for broader compatibility
       if (pkg === "@ai-sdk/openai-compatible") {
-        opts.transformRequestBody = (body: Record<string, any>) => {
-          // Remove parallel_tool_calls — many proxies/providers don't support it
-          delete body.parallel_tool_calls
-
-          // Ensure all tool schemas have type: "object" (required by DeepSeek/Qwen/etc.)
-          if (Array.isArray(body.tools)) {
-            for (const t of body.tools) {
-              const params = t?.function?.parameters
-              if (params && !params.type) {
-                params.type = "object"
-                if (!params.properties) params.properties = {}
-              }
-            }
-          }
-
-          return body
-        }
+        opts.transformRequestBody = (body: Record<string, any>) => patchRequestByCompat(compat, body)
       }
       sdk = createFn(opts)
       sdkCache.set(cacheKey, sdk)
@@ -250,33 +230,18 @@ export namespace AIProvider {
     return cfg.model
   }
 
-  // ---------------------------------------------------------------------------
-  // Check if any AI provider has a key configured
-  // ---------------------------------------------------------------------------
   export async function hasAnyKey(): Promise<boolean> {
-    for (const providerID of Object.keys(PROVIDER_ENV)) {
-      const key = await getApiKey(providerID)
-      if (key) return true
-    }
-    const cfg = await Config.load()
-    if (cfg.providers) {
-      for (const p of Object.values(cfg.providers)) {
-        if (p.api_key) return true
-      }
-    }
-    return false
+    const loaded = await loadProviders()
+    return Object.values(loaded.providers).some((p) => !!p.apiKey)
   }
 
-  // ---------------------------------------------------------------------------
-  // List available models with key status
-  // ---------------------------------------------------------------------------
   export async function available(): Promise<Array<{ model: ModelInfo; hasKey: boolean }>> {
     const result: Array<{ model: ModelInfo; hasKey: boolean }> = []
     for (const model of Object.values(BUILTIN_MODELS)) {
       const apiKey = await getApiKey(model.providerID)
       result.push({ model, hasKey: !!apiKey })
     }
-    // Include remote models from openai-compatible provider
+
     const compatKey = await getApiKey("openai-compatible")
     const compatBase = await getBaseUrl("openai-compatible")
     if (compatKey && compatBase) {
@@ -292,9 +257,6 @@ export namespace AIProvider {
     return result
   }
 
-  // ---------------------------------------------------------------------------
-  // Parse provider/model format
-  // ---------------------------------------------------------------------------
   export function parseModel(model: string) {
     const [providerID, ...rest] = model.split("/")
     return { providerID, modelID: rest.join("/") }

@@ -1,32 +1,66 @@
-import { describe, test, expect, beforeEach, afterEach } from "bun:test"
-import { AIProvider } from "../provider"
+import fs from "fs/promises"
+import os from "os"
+import path from "path"
+import { describe, test, expect, beforeAll, beforeEach, afterEach, afterAll } from "bun:test"
+import { Config } from "../../config"
 
 describe("AIProvider", () => {
   const originalEnv = { ...process.env }
+  const testHome = path.join(os.tmpdir(), `codeblog-provider-test-${process.pid}-${Date.now()}`)
+  const configFile = path.join(testHome, ".config", "codeblog", "config.json")
+  const xdgData = path.join(testHome, ".local", "share")
+  const xdgCache = path.join(testHome, ".cache")
+  const xdgConfig = path.join(testHome, ".config")
+  const xdgState = path.join(testHome, ".local", "state")
+  const envKeys = [
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "OPENAI_API_KEY",
+    "GOOGLE_GENERATIVE_AI_API_KEY",
+    "GOOGLE_API_KEY",
+    "OPENAI_COMPATIBLE_API_KEY",
+    "ANTHROPIC_BASE_URL",
+    "OPENAI_BASE_URL",
+    "OPENAI_API_BASE",
+    "GOOGLE_API_BASE_URL",
+    "OPENAI_COMPATIBLE_BASE_URL",
+  ]
+  let AIProvider: (typeof import("../provider"))["AIProvider"]
 
-  beforeEach(() => {
-    // Clean up env vars before each test
-    delete process.env.ANTHROPIC_API_KEY
-    delete process.env.ANTHROPIC_AUTH_TOKEN
-    delete process.env.OPENAI_API_KEY
-    delete process.env.GOOGLE_GENERATIVE_AI_API_KEY
-    delete process.env.GOOGLE_API_KEY
-    delete process.env.OPENAI_COMPATIBLE_API_KEY
-    delete process.env.ANTHROPIC_BASE_URL
-    delete process.env.OPENAI_BASE_URL
-    delete process.env.OPENAI_API_BASE
-    delete process.env.GOOGLE_API_BASE_URL
-    delete process.env.OPENAI_COMPATIBLE_BASE_URL
+  beforeAll(async () => {
+    process.env.CODEBLOG_TEST_HOME = testHome
+    process.env.XDG_DATA_HOME = xdgData
+    process.env.XDG_CACHE_HOME = xdgCache
+    process.env.XDG_CONFIG_HOME = xdgConfig
+    process.env.XDG_STATE_HOME = xdgState
+    process.env.CODEBLOG_AI_PROVIDER_REGISTRY_V2 = "0"
+    await fs.mkdir(path.dirname(configFile), { recursive: true })
+    await fs.writeFile(configFile, "{}\n")
+    ;({ AIProvider } = await import("../provider"))
+  })
+
+  beforeEach(async () => {
+    process.env.CODEBLOG_TEST_HOME = testHome
+    process.env.XDG_DATA_HOME = xdgData
+    process.env.XDG_CACHE_HOME = xdgCache
+    process.env.XDG_CONFIG_HOME = xdgConfig
+    process.env.XDG_STATE_HOME = xdgState
+    process.env.CODEBLOG_AI_PROVIDER_REGISTRY_V2 = "0"
+    for (const key of envKeys) delete process.env[key]
+    await fs.writeFile(configFile, "{}\n")
   })
 
   afterEach(() => {
-    // Restore original env
     for (const key of Object.keys(process.env)) {
       if (!(key in originalEnv)) delete process.env[key]
     }
     for (const [key, val] of Object.entries(originalEnv)) {
       if (val !== undefined) process.env[key] = val
     }
+  })
+
+  afterAll(async () => {
+    await fs.rm(testHome, { recursive: true, force: true })
   })
 
   // ---------------------------------------------------------------------------
@@ -171,7 +205,13 @@ describe("AIProvider", () => {
   // ---------------------------------------------------------------------------
 
   test("getModel throws when no API key for builtin model", async () => {
-    expect(AIProvider.getModel("gpt-4o")).rejects.toThrow("No API key for openai")
+    const load = Config.load
+    Config.load = async () => ({ api_url: "https://codeblog.ai" })
+    try {
+      await expect(AIProvider.getModel("gpt-4o")).rejects.toThrow("No API key for openai")
+    } finally {
+      Config.load = load
+    }
   })
 
   test("getModel falls back to provider with base_url for unknown model", async () => {

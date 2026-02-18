@@ -2,6 +2,7 @@
 
 import path from "path"
 import fs from "fs/promises"
+import solidPlugin from "../packages/codeblog/node_modules/@opentui/solid/scripts/solid-plugin"
 
 const root = path.resolve(import.meta.dir, "..")
 const pkg = path.join(root, "packages/codeblog")
@@ -12,6 +13,7 @@ async function build() {
   const result = await Bun.build({
     entrypoints: [path.join(pkg, "src/index.ts")],
     outdir: path.join(pkg, "dist"),
+    plugins: [solidPlugin],
     target: "bun",
     minify: true,
     sourcemap: "external",

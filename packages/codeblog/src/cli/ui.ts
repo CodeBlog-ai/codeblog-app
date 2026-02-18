@@ -84,31 +84,70 @@ export namespace UI {
       if (stdin.isTTY && stdin.setRawMode) stdin.setRawMode(true)
 
       let buf = ""
-      const onData = (ch: Buffer) => {
+      let paste = false
+      let onData: ((ch: Buffer) => void) = () => {}
+
+      const restore = () => {
+        if (stdin.isTTY && stdin.setRawMode) stdin.setRawMode(wasRaw ?? false)
+        stdin.removeListener("data", onData)
+      }
+
+      const readClipboard = () => {
+        if (process.platform !== "darwin") return ""
+        try {
+          const out = Bun.spawnSync(["pbpaste"])
+          if (out.exitCode !== 0) return ""
+          return out.stdout.toString().replace(/\r\n/g, "\n").replace(/\r/g, "\n").replace(/\n/g, "")
+        } catch {
+          return ""
+        }
+      }
+
+      const append = (text: string) => {
+        if (!text) return
+        buf += text
+        process.stderr.write(text)
+      }
+
+      onData = (ch: Buffer) => {
         const c = ch.toString("utf8")
         if (c === "\u0003") {
           // Ctrl+C
-          if (stdin.isTTY && stdin.setRawMode) stdin.setRawMode(wasRaw ?? false)
-          stdin.removeListener("data", onData)
+          restore()
           process.exit(130)
         }
-        if (c === "\x1b") {
+        if (!paste && c === "\x1b") {
           // Escape
-          if (stdin.isTTY && stdin.setRawMode) stdin.setRawMode(wasRaw ?? false)
-          stdin.removeListener("data", onData)
+          restore()
           process.stderr.write("\n")
           resolve(null)
           return
         }
-        if (c === "\r" || c === "\n") {
+        if (c === "\x16" || c === "\x1bv") {
+          const clip = readClipboard()
+          if (clip) append(clip)
+          return
+        }
+
+        let text = c
+        if (text.includes("\x1b[200~")) {
+          paste = true
+          text = text.replace(/\x1b\[200~/g, "")
+        }
+        if (text.includes("\x1b[201~")) {
+          paste = false
+          text = text.replace(/\x1b\[201~/g, "")
+        }
+        text = text.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "").replace(/\x1b./g, "")
+
+        if (!paste && (text === "\r" || text === "\n")) {
           // Enter
-          if (stdin.isTTY && stdin.setRawMode) stdin.setRawMode(wasRaw ?? false)
-          stdin.removeListener("data", onData)
+          restore()
           process.stderr.write("\n")
           resolve(buf)
           return
         }
-        if (c === "\u007f" || c === "\b") {
+        if (!paste && (text === "\u007f" || text === "\b")) {
           // Backspace
           if (buf.length > 0) {
             buf = buf.slice(0, -1)
@@ -117,11 +156,8 @@ export namespace UI {
           return
         }
         // Regular character
-        const clean = c.replace(/[\x00-\x1f\x7f]/g, "")
-        if (clean) {
-          buf += clean
-          process.stderr.write(clean)
-        }
+        const clean = text.replace(/[\x00-\x08\x0b-\x1f\x7f]/g, "")
+        append(clean)
       }
       stdin.on("data", onData)
     })
@@ -165,16 +201,87 @@ export namespace UI {
   }
 
   export async function select(prompt: string, options: string[]): Promise<number> {
-    console.log(prompt)
-    for (let i = 0; i < options.length; i++) {
-      console.log(`  ${Style.TEXT_HIGHLIGHT}[${i + 1}]${Style.TEXT_NORMAL} ${options[i]}`)
+    if (options.length === 0) return 0
+
+    const stdin = process.stdin
+    const wasRaw = stdin.isRaw
+    if (stdin.isTTY && stdin.setRawMode) stdin.setRawMode(true)
+    process.stderr.write("\x1b[?25l")
+
+    let idx = 0
+    let drawnRows = 0
+    const maxRows = 12
+    let onData: ((ch: Buffer) => void) = () => {}
+
+    const stripAnsi = (text: string) => text.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "").replace(/\x1b./g, "")
+    const rowCount = (line: string) => {
+      const cols = Math.max(20, process.stderr.columns || 80)
+      const len = Array.from(stripAnsi(line)).length
+      return Math.max(1, Math.ceil((len || 1) / cols))
     }
-    console.log("")
-    const answer = await input(`  Choice [1]: `)
-    const num = parseInt(answer, 10)
-    if (!answer) return 0
-    if (isNaN(num) || num < 1 || num > options.length) return 0
-    return num - 1
+
+    const draw = () => {
+      if (drawnRows > 1) process.stderr.write(`\x1b[${drawnRows - 1}F`)
+      process.stderr.write("\x1b[J")
+
+      const start = options.length <= maxRows ? 0 : Math.max(0, Math.min(idx - 4, options.length - maxRows))
+      const items = options.slice(start, start + maxRows)
+      const lines = [
+        prompt,
+        ...items.map((item, i) => {
+          const active = start + i === idx
+          const marker = active ? `${Style.TEXT_HIGHLIGHT}●${Style.TEXT_NORMAL}` : "○"
+          const text = active ? `${Style.TEXT_NORMAL_BOLD}${item}${Style.TEXT_NORMAL}` : item
+          return `  ${marker} ${text}`
+        }),
+        options.length > maxRows
+          ? `  ${Style.TEXT_DIM}${start > 0 ? "↑ more  " : ""}${start + maxRows < options.length ? "↓ more" : ""}${Style.TEXT_NORMAL}`
+          : `  ${Style.TEXT_DIM}${Style.TEXT_NORMAL}`,
+        `  ${Style.TEXT_DIM}Use ↑/↓ then Enter (Esc to cancel)${Style.TEXT_NORMAL}`,
+      ]
+      process.stderr.write(lines.map((line) => `\x1b[2K\r${line}`).join("\n"))
+      drawnRows = lines.reduce((sum, line) => sum + rowCount(line), 0)
+    }
+
+    const restore = () => {
+      process.stderr.write("\x1b[?25h")
+      if (stdin.isTTY && stdin.setRawMode) stdin.setRawMode(wasRaw ?? false)
+      stdin.removeListener("data", onData)
+      process.stderr.write("\n")
+    }
+
+    draw()
+
+    return new Promise((resolve) => {
+      onData = (ch: Buffer) => {
+        const c = ch.toString("utf8")
+        if (c === "\u0003") {
+          restore()
+          process.exit(130)
+        }
+        if (c === "\r" || c === "\n") {
+          restore()
+          resolve(idx)
+          return
+        }
+        if (c === "\x1b") {
+          restore()
+          resolve(-1)
+          return
+        }
+        if (c === "k" || c.includes("\x1b[A") || c.includes("\x1bOA")) {
+          idx = (idx - 1 + options.length) % options.length
+          draw()
+          return
+        }
+        if (c === "j" || c.includes("\x1b[B") || c.includes("\x1bOB")) {
+          idx = (idx + 1) % options.length
+          draw()
+          return
+        }
+      }
+      stdin.on("data", onData)
+    })
   }
 
   export async function waitKey(prompt: string, keys: string[]): Promise<string> {

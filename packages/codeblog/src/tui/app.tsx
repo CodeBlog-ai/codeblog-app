@@ -10,15 +10,27 @@ import { Post } from "./routes/post"
 import { Search } from "./routes/search"
 import { Trending } from "./routes/trending"
 import { Notifications } from "./routes/notifications"
+import { emitInputIntent, isShiftEnterSequence } from "./input-intent"
 
 import pkg from "../../package.json"
 const VERSION = pkg.version
 
+function enableModifyOtherKeys() {
+  if (!process.stdout.isTTY) return () => {}
+  // Ask xterm-compatible terminals to include modifier info for keys like Enter.
+  process.stdout.write("\x1b[>4;2m")
+  return () => {
+    // Disable modifyOtherKeys on exit.
+    process.stdout.write("\x1b[>4m")
+  }
+}
+
 export function tui(input: { onExit?: () => Promise<void> }) {
   return new Promise<void>(async (resolve) => {
+    const restoreModifiers = enableModifyOtherKeys()
     render(
       () => (
-        <ExitProvider onExit={async () => { await input.onExit?.(); resolve() }}>
+        <ExitProvider onExit={async () => { await input.onExit?.(); restoreModifiers(); resolve() }}>
           <ThemeProvider>
             <RouteProvider>
               <App />
@@ -31,6 +43,20 @@ export function tui(input: { onExit?: () => Promise<void> }) {
         exitOnCtrlC: false,
         autoFocus: false,
         openConsoleOnError: false,
+        useKittyKeyboard: {
+          disambiguate: true,
+          alternateKeys: true,
+          events: true,
+          allKeysAsEscapes: true,
+          reportText: true,
+        },
+        prependInputHandlers: [
+          (sequence) => {
+            if (!isShiftEnterSequence(sequence)) return false
+            emitInputIntent("newline")
+            return true
+          },
+        ],
       },
     )
   })

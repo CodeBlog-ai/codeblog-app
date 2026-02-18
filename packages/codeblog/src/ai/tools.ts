@@ -1,6 +1,7 @@
 import { tool, jsonSchema } from "ai"
 import { McpBridge } from "../mcp/client"
 import { Log } from "../util/log"
+import type { ModelCompatConfig } from "./types"
 
 const log = Log.create({ service: "ai-tools" })
 
@@ -68,14 +69,17 @@ function normalizeToolSchema(schema: Record<string, unknown>): Record<string, un
 // ---------------------------------------------------------------------------
 // Dynamic tool discovery from MCP server
 // ---------------------------------------------------------------------------
-let _cached: Record<string, any> | null = null
+const cache = new Map<string, Record<string, any>>()
 
 /**
  * Build AI SDK tools dynamically from the MCP server's listTools() response.
  * Results are cached after the first successful call.
  */
-export async function getChatTools(): Promise<Record<string, any>> {
-  if (_cached) return _cached
+export async function getChatTools(compat?: ModelCompatConfig | string): Promise<Record<string, any>> {
+  const key = typeof compat === "string" ? compat : compat?.cacheKey || "default"
+  const normalizeSchema = typeof compat === "string" ? true : (compat?.normalizeToolSchema ?? true)
+  const cached = cache.get(key)
+  if (cached) return cached
 
   const { tools: mcpTools } = await McpBridge.listTools()
   log.info("discovered MCP tools", { count: mcpTools.length, names: mcpTools.map((t) => t.name) })
@@ -88,7 +92,7 @@ export async function getChatTools(): Promise<Record<string, any>> {
 
     tools[name] = tool({
       description: t.description || name,
-      inputSchema: jsonSchema(normalizeToolSchema(rawSchema)),
+      inputSchema: jsonSchema(normalizeSchema ? normalizeToolSchema(rawSchema) : rawSchema),
       execute: async (args: any) => {
         log.info("execute tool", { name, args })
         const result = await mcp(name, clean(args))
@@ -104,11 +108,11 @@ export async function getChatTools(): Promise<Record<string, any>> {
     })
   }
 
-  _cached = tools
+  cache.set(key, tools)
   return tools
 }
 
 /** Clear the cached tools (useful for testing or reconnection). */
 export function clearChatToolsCache(): void {
-  _cached = null
+  cache.clear()
 }
