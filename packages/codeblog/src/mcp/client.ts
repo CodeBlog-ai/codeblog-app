@@ -38,7 +38,7 @@ async function connect(): Promise<Client> {
 
   connecting = (async (): Promise<Client> => {
     const mcpPath = getMcpBinaryPath()
-    log.debug("connecting", { path: mcpPath })
+    log.info("connecting", { path: mcpPath })
 
     const env: Record<string, string> = {}
     for (const [k, v] of Object.entries(process.env)) {
@@ -52,19 +52,48 @@ async function connect(): Promise<Client> {
       stderr: "pipe",
     })
 
+    // Capture subprocess stderr for diagnostics
+    const stderrChunks: string[] = []
+    const stderrStream = t.stderr
+    if (stderrStream) {
+      stderrStream.on("data", (chunk: Buffer) => {
+        const line = chunk.toString().trim()
+        if (line) {
+          stderrChunks.push(line)
+          log.warn("mcp-subprocess-stderr", { output: line })
+        }
+      })
+    }
+
     const c = new Client({ name: "codeblog-cli", version: "2.0.0" })
+
+    // Log when the subprocess exits unexpectedly
+    c.onclose = () => {
+      log.warn("mcp-connection-closed", {
+        stderrTail: stderrChunks.slice(-5).join("\n") || "(empty)",
+      })
+      // Clear module-level refs so next call will reconnect
+      client = null
+      transport = null
+    }
 
     try {
       await withTimeout(c.connect(t), CONNECTION_TIMEOUT_MS, "MCP connection")
     } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err)
+      log.error("mcp-connect-failed", {
+        error: errMsg,
+        stderrTail: stderrChunks.slice(-5).join("\n") || "(empty)",
+      })
       // Clean up on failure so next call can retry
       await t.close().catch(() => {})
       throw err
     }
 
-    log.debug("connected", {
+    log.info("connected", {
       server: c.getServerVersion()?.name,
       version: c.getServerVersion()?.version,
+      pid: t.pid,
     })
 
     // Only assign to module-level vars after successful connection
@@ -92,10 +121,19 @@ export namespace McpBridge {
     args: Record<string, unknown> = {},
   ): Promise<string> {
     const c = await connect()
-    const result = await c.callTool({ name, arguments: args })
+    let result
+    try {
+      result = await c.callTool({ name, arguments: args })
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err)
+      const errCode = (err as any)?.code
+      log.error("mcp-tool-call-failed", { tool: name, error: errMsg, code: errCode })
+      throw err
+    }
 
     if (result.isError) {
       const text = extractText(result)
+      log.error("mcp-tool-returned-error", { tool: name, error: text })
       throw new Error(text || `MCP tool "${name}" returned an error`)
     }
 
@@ -129,6 +167,7 @@ export namespace McpBridge {
    * Disconnect the MCP client and kill the subprocess.
    */
   export async function disconnect(): Promise<void> {
+    log.info("disconnecting", { hadClient: !!client, hadTransport: !!transport })
     connecting = null
     if (transport) {
       await transport.close().catch(() => {})
