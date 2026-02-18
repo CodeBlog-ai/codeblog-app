@@ -91,9 +91,24 @@ p{font-size:15px;color:#6a737c;line-height:1.5}
         },
       })
 
-      Server.start(wrapped, port)
+      const picks = [port, port + 1, port + 2, 0]
+      let started: ReturnType<typeof Server.start> | null = null
 
-      const authUrl = `${base}/auth/cli?port=${port}`
+      for (const p of picks) {
+        if (started) break
+        try {
+          started = Server.start(wrapped, p)
+        } catch (err) {
+          log.warn("failed to start callback server on port", { port: p, error: String(err) })
+        }
+      }
+
+      if (!started) {
+        reject(new Error(`Failed to start callback server on ports ${picks.slice(0, 3).join(", ")}`))
+        return
+      }
+
+      const authUrl = `${base}/auth/cli?port=${started.port ?? port}`
       log.info("opening browser", { url: authUrl })
       if (options?.onUrl) options.onUrl(authUrl)
       open(authUrl)

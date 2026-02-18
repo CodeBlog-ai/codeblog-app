@@ -1,4 +1,5 @@
 import path from "path"
+import { chmod, writeFile } from "fs/promises"
 import { Global } from "../global"
 import z from "zod"
 
@@ -25,7 +26,8 @@ export namespace Auth {
   }
 
   export async function set(token: Token) {
-    await Bun.write(Bun.file(filepath, { mode: 0o600 }), JSON.stringify(token, null, 2))
+    await writeFile(filepath, JSON.stringify(token, null, 2))
+    await chmod(filepath, 0o600).catch(() => {})
   }
 
   export async function remove() {

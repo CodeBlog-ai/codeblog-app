@@ -9,14 +9,15 @@ export interface CmdDef {
 
 export interface CommandDeps {
   showMsg: (text: string, color?: string) => void
-  navigate: (route: any) => void
+  openModelPicker: () => Promise<void>
   exit: () => void
   onLogin: () => Promise<void>
   onLogout: () => void
+  onAIConfigured: () => void
   clearChat: () => void
   startAIConfig: () => void
   setMode: (mode: "dark" | "light") => void
-  send: (prompt: string) => void
+  send: (prompt: string, options?: { display?: string }) => void
   resume: (id?: string) => void
   listSessions: () => Array<{ id: string; title: string | null; time: number; count: number }>
   hasAI: boolean
@@ -32,8 +33,33 @@ export interface CommandDeps {
 export function createCommands(deps: CommandDeps): CmdDef[] {
   return [
     // === Configuration & Setup ===
-    { name: "/ai", description: "Configure AI provider (paste URL + key)", action: () => deps.startAIConfig() },
-    { name: "/model", description: "Choose AI model", action: () => deps.navigate({ type: "model" }) },
+    { name: "/ai", description: "Quick AI setup (URL + key)", action: () => deps.startAIConfig() },
+    { name: "/model", description: "Switch model (picker or /model <id>)", action: async (parts) => {
+      const query = parts.slice(1).join(" ").trim()
+      if (!query) {
+        await deps.openModelPicker()
+        return
+      }
+      const { AIProvider } = await import("../ai/provider")
+      const { Config } = await import("../config")
+      const list = await AIProvider.available()
+      const all = list.filter((m) => m.hasKey).map((m) => m.model)
+
+      const picked = all.find((m) =>
+        m.id === query ||
+        `${m.providerID}/${m.id}` === query ||
+        (m.providerID === "openai-compatible" && `openai-compatible/${m.id}` === query)
+      )
+      if (!picked) {
+        deps.showMsg(`Model not found: ${query}. Run /model to list available models.`, deps.colors.warning)
+        return
+      }
+
+      const saveId = picked.providerID === "openai-compatible" ? `openai-compatible/${picked.id}` : picked.id
+      await Config.save({ model: saveId })
+      deps.onAIConfigured()
+      deps.showMsg(`Model switched to ${saveId}`, deps.colors.success)
+    }},
     { name: "/login", description: "Sign in to CodeBlog", action: async () => {
       deps.showMsg("Opening browser for login...", deps.colors.primary)
       await deps.onLogin()
@@ -134,7 +160,15 @@ export function createCommands(deps: CommandDeps): CmdDef[] {
     // === UI & Navigation ===
     { name: "/clear", description: "Clear conversation", action: () => deps.clearChat() },
     { name: "/new", description: "New conversation", action: () => deps.clearChat() },
-    { name: "/theme", description: "Change color theme", action: () => deps.navigate({ type: "theme" }) },
+    { name: "/theme", description: "Theme mode: /theme [light|dark]", action: (parts) => {
+      const mode = (parts[1] || "").toLowerCase()
+      if (mode === "dark" || mode === "light") {
+        deps.setMode(mode)
+        deps.showMsg(`Theme switched to ${mode}`, deps.colors.success)
+        return
+      }
+      deps.showMsg("Use /theme dark or /theme light (or /dark /light)", deps.colors.text)
+    }},
     { name: "/dark", description: "Switch to dark mode", action: () => { deps.setMode("dark"); deps.showMsg("Dark mode", deps.colors.text) } },
     { name: "/light", description: "Switch to light mode", action: () => { deps.setMode("light"); deps.showMsg("Light mode", deps.colors.text) } },
     { name: "/resume", description: "Resume last chat session", action: (parts) => deps.resume(parts[1]) },
@@ -155,7 +189,7 @@ export function createCommands(deps: CommandDeps): CmdDef[] {
 }
 
 export const TIPS = [
-  "Type /ai to configure your AI provider with a URL and API key",
+  "Type /ai for quick setup, or run `codeblog ai setup` for full onboarding",
   "Type /model to switch between available AI models",
   "Use /scan to discover IDE coding sessions from Cursor, Windsurf, etc.",
   "Use /publish to share your coding sessions as blog posts",
@@ -169,7 +203,7 @@ export const TIPS = [
 ]
 
 export const TIPS_NO_AI = [
-  "Type /ai to configure your AI provider — unlock AI chat and smart commands",
+  "Type /ai for quick setup, or run `codeblog ai setup` for full onboarding",
   "Commands in grey require AI. Type /ai to set up your provider first",
   "Type / to see all available commands with autocomplete",
   "Configure AI with /ai — then chat naturally to browse, post, and interact",

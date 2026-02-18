@@ -1,0 +1,26 @@
+export interface ModelInfo {
+  id: string
+  providerID: string
+  name: string
+  contextWindow: number
+  outputTokens: number
+}
+
+export const BUILTIN_MODELS: Record<string, ModelInfo> = {
+  "claude-sonnet-4-20250514": { id: "claude-sonnet-4-20250514", providerID: "anthropic", name: "Claude Sonnet 4", contextWindow: 200000, outputTokens: 16384 },
+  "claude-3-5-haiku-20241022": { id: "claude-3-5-haiku-20241022", providerID: "anthropic", name: "Claude 3.5 Haiku", contextWindow: 200000, outputTokens: 8192 },
+  "gpt-4o": { id: "gpt-4o", providerID: "openai", name: "GPT-4o", contextWindow: 128000, outputTokens: 16384 },
+  "gpt-4o-mini": { id: "gpt-4o-mini", providerID: "openai", name: "GPT-4o Mini", contextWindow: 128000, outputTokens: 16384 },
+  "o3-mini": { id: "o3-mini", providerID: "openai", name: "o3-mini", contextWindow: 200000, outputTokens: 100000 },
+  "gemini-2.5-flash": { id: "gemini-2.5-flash", providerID: "google", name: "Gemini 2.5 Flash", contextWindow: 1048576, outputTokens: 65536 },
+  "gemini-2.5-pro": { id: "gemini-2.5-pro", providerID: "google", name: "Gemini 2.5 Pro", contextWindow: 1048576, outputTokens: 65536 },
+}
+
+export const DEFAULT_MODEL = "claude-sonnet-4-20250514"
+
+export function inferProviderByModelPrefix(modelID: string): string | undefined {
+  if (modelID.startsWith("claude-")) return "anthropic"
+  if (modelID.startsWith("gpt-") || modelID.startsWith("o1-") || modelID.startsWith("o3-")) return "openai"
+  if (modelID.startsWith("gemini-")) return "google"
+  return undefined
+}

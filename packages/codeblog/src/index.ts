@@ -8,6 +8,7 @@ import { Auth } from "./auth"
 
 // Commands
 import { SetupCommand } from "./cli/cmd/setup"
+import { AISetupCommand } from "./cli/cmd/ai"
 import { LoginCommand } from "./cli/cmd/login"
 import { LogoutCommand } from "./cli/cmd/logout"
 import { WhoamiCommand } from "./cli/cmd/whoami"
@@ -71,7 +72,7 @@ const cli = yargs(hideBin(process.argv))
   })
   .middleware(async (argv) => {
     const cmd = argv._[0] as string | undefined
-    const skipAuth = ["setup", "login", "logout", "config", "update", "uninstall"]
+    const skipAuth = ["setup", "ai", "login", "logout", "config", "update", "uninstall"]
     if (cmd && !skipAuth.includes(cmd)) {
       const authed = await Auth.authenticated()
       if (!authed) {
@@ -84,6 +85,7 @@ const cli = yargs(hideBin(process.argv))
     "\n" + UI.logo() +
     "\n  Getting Started:\n" +
     "    setup              First-time setup wizard\n" +
+    "    ai setup           Full AI onboarding wizard\n" +
     "    login / logout     Authentication\n\n" +
     "  Browse & Interact:\n" +
     "    feed               Browse the forum feed\n" +
@@ -111,6 +113,7 @@ const cli = yargs(hideBin(process.argv))
   // Register commands with describe=false to hide from auto-generated Commands section
   // (we already display them in the custom usage above)
   .command({ ...SetupCommand, describe: false })
+  .command({ ...AISetupCommand, describe: false })
   .command({ ...LoginCommand, describe: false })
   .command({ ...LogoutCommand, describe: false })
   .command({ ...FeedCommand, describe: false })

@@ -2,6 +2,7 @@ import { streamText, stepCountIs } from "ai"
 import { AIProvider } from "./provider"
 import { getChatTools } from "./tools"
 import { Log } from "../util/log"
+import { createRunEventFactory, type StreamEvent } from "./stream-events"
 
 const log = Log.create({ service: "ai-chat" })
 
@@ -26,8 +27,9 @@ CRITICAL: When using tools, ALWAYS use the EXACT data returned by previous tool 
 Write casually like a dev talking to another dev. Be specific, opinionated, and genuine.
 Use code examples when relevant. Think Juejin / HN / Linux.do vibes — not a conference paper.`
 
-const IDLE_TIMEOUT_MS = 15_000 // 15s without any stream event → abort
-const DEFAULT_MAX_STEPS = 10 // Allow AI to retry tools up to 10 steps (each tool call + result = 1 step)
+const IDLE_TIMEOUT_MS = 60_000
+const TOOL_TIMEOUT_MS = 45_000
+const DEFAULT_MAX_STEPS = 10
 
 export namespace AIChat {
   export interface Message {
@@ -39,79 +41,141 @@ export namespace AIChat {
     onToken?: (token: string) => void
     onFinish?: (text: string) => void
     onError?: (error: Error) => void
-    onToolCall?: (name: string, args: unknown) => void
-    onToolResult?: (name: string, result: unknown) => void
+    onToolCall?: (name: string, args: unknown, callID: string) => void
+    onToolResult?: (name: string, result: unknown, callID: string) => void
   }
 
   export interface StreamOptions {
     maxSteps?: number
+    runId?: string
+    idleTimeoutMs?: number
+    toolTimeoutMs?: number
   }
 
-  export async function stream(
+  export async function* streamEvents(
     messages: Message[],
-    callbacks: StreamCallbacks,
     modelID?: string,
     signal?: AbortSignal,
-    options?: StreamOptions
-  ) {
-    const model = await AIProvider.getModel(modelID)
-    const tools = await getChatTools()
-    const maxSteps = options?.maxSteps ?? DEFAULT_MAX_STEPS
-    log.info("streaming", { model: modelID || AIProvider.DEFAULT_MODEL, messages: messages.length, toolCount: Object.keys(tools).length, maxSteps })
-
+    options?: StreamOptions,
+  ): AsyncGenerator<StreamEvent> {
     const history = messages
       .filter((m) => m.role === "user" || m.role === "assistant")
       .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }))
-    let full = ""
 
-    // Create an internal AbortController that we can trigger on idle timeout
+    const routeCompat = await AIProvider.resolveModelCompat(modelID).catch(() => undefined)
+    const tools = await getChatTools(routeCompat || "default")
+    const model = await AIProvider.getModel(modelID)
+    const maxSteps = options?.maxSteps ?? DEFAULT_MAX_STEPS
+    const idleTimeoutMs = options?.idleTimeoutMs ?? IDLE_TIMEOUT_MS
+    const toolTimeoutMs = options?.toolTimeoutMs ?? TOOL_TIMEOUT_MS
+
+    const run = createRunEventFactory(options?.runId)
+    let full = ""
+    let aborted = false
+    let externalAbort = false
+    let abortError: Error | undefined
+    let errorEmitted = false
+    const toolQueue = new Map<string, string[]>()
+    const activeTools = new Map<string, { name: string; timer?: ReturnType<typeof setTimeout> }>()
+
     const internalAbort = new AbortController()
-    const onExternalAbort = () => {
-      log.info("external abort signal received")
+    const abortRun = (error?: Error) => {
+      if (aborted) return
+      aborted = true
+      if (error) abortError = error
       internalAbort.abort()
+    }
+    const onExternalAbort = () => {
+      externalAbort = true
+      abortRun()
     }
     signal?.addEventListener("abort", onExternalAbort)
 
-    const result = streamText({
-      model,
-      system: SYSTEM_PROMPT,
-      messages: history,
-      tools,
-      stopWhen: stepCountIs(maxSteps),
-      toolChoice: "auto",
-      abortSignal: internalAbort.signal,
-      experimental_toolCallStreaming: false, // Disable streaming tool calls to avoid incomplete arguments bug
-      onStepFinish: (stepResult) => {
-        log.info("onStepFinish", {
-          stepNumber: stepResult.stepNumber,
-          finishReason: stepResult.finishReason,
-          textLength: stepResult.text?.length ?? 0,
-          toolCallsCount: stepResult.toolCalls?.length ?? 0,
-          toolResultsCount: stepResult.toolResults?.length ?? 0,
-        })
-      },
+    yield run.next("run-start", {
+      modelID: modelID || AIProvider.DEFAULT_MODEL,
+      messageCount: history.length,
     })
 
-    let partCount = 0
-    let toolExecuting = false
-    try {
-      // Idle timeout: if no stream events arrive for IDLE_TIMEOUT_MS, abort.
-      // Paused during tool execution (tools can take longer than 15s).
-      let idleTimer: ReturnType<typeof setTimeout> | undefined
-      const resetIdle = () => {
-        if (idleTimer) clearTimeout(idleTimer)
-        if (toolExecuting) return // Don't start timer while tool is running
-        idleTimer = setTimeout(() => {
-          log.info("IDLE TIMEOUT FIRED", { partCount, fullLength: full.length })
-          internalAbort.abort()
-        }, IDLE_TIMEOUT_MS)
+    let idleTimer: ReturnType<typeof setTimeout> | undefined
+    const clearAllToolTimers = () => {
+      for (const entry of activeTools.values()) {
+        if (entry.timer) clearTimeout(entry.timer)
       }
-      resetIdle()
+    }
 
+    const pushToolID = (name: string, callID: string) => {
+      const queue = toolQueue.get(name)
+      if (!queue) {
+        toolQueue.set(name, [callID])
+        return
+      }
+      queue.push(callID)
+    }
+
+    const shiftToolID = (name: string) => {
+      const queue = toolQueue.get(name)
+      if (!queue || queue.length === 0) return undefined
+      const callID = queue.shift()
+      if (queue.length === 0) toolQueue.delete(name)
+      return callID
+    }
+
+    const dropToolID = (name: string, callID: string) => {
+      const queue = toolQueue.get(name)
+      if (!queue || queue.length === 0) return
+      const next = queue.filter((id) => id !== callID)
+      if (next.length === 0) {
+        toolQueue.delete(name)
+        return
+      }
+      toolQueue.set(name, next)
+    }
+
+    const armToolTimeout = (name: string, callID: string) => {
+      if (toolTimeoutMs <= 0) return
+      const timer = setTimeout(() => {
+        abortRun(new Error(`Tool call "${name}" timed out after ${toolTimeoutMs}ms`))
+      }, toolTimeoutMs)
+      const active = activeTools.get(callID)
+      if (!active) return
+      if (active.timer) clearTimeout(active.timer)
+      active.timer = timer
+    }
+
+    const startTool = (name: string, callID: string) => {
+      activeTools.set(callID, { name })
+      armToolTimeout(name, callID)
+    }
+
+    const finishTool = (callID?: string) => {
+      if (!callID) return
+      const active = activeTools.get(callID)
+      if (!active) return
+      if (active.timer) clearTimeout(active.timer)
+      activeTools.delete(callID)
+    }
+
+    const resetIdle = () => {
+      if (idleTimer) clearTimeout(idleTimer)
+      if (activeTools.size > 0) return
+      idleTimer = setTimeout(() => {
+        abortRun(new Error(`Stream idle timeout after ${idleTimeoutMs}ms`))
+      }, idleTimeoutMs)
+    }
+
+    try {
+      const result = streamText({
+        model,
+        system: SYSTEM_PROMPT,
+        messages: history,
+        tools,
+        stopWhen: stepCountIs(maxSteps),
+        toolChoice: "auto",
+        abortSignal: internalAbort.signal,
+      })
+      resetIdle()
       for await (const part of result.fullStream) {
-        partCount++
         if (internalAbort.signal.aborted) {
-          log.info("abort detected in loop, breaking", { partCount })
           break
         }
         resetIdle()
@@ -119,70 +183,118 @@ export namespace AIChat {
         switch (part.type) {
           case "text-delta": {
             const delta = (part as any).text ?? (part as any).textDelta ?? ""
-            if (delta) { full += delta; callbacks.onToken?.(delta) }
+            if (!delta) break
+            full += delta
+            yield run.next("text-delta", { text: delta })
             break
           }
           case "tool-call": {
-            const toolName = (part as any).toolName
-            const toolArgs = (part as any).args ?? (part as any).input ?? {}
-            log.info("tool-call", { toolName, args: toolArgs, partCount })
-            // Pause idle timer — tool execution happens between tool-call and tool-result
-            toolExecuting = true
-            if (idleTimer) { clearTimeout(idleTimer); idleTimer = undefined }
-            callbacks.onToolCall?.(toolName, toolArgs)
+            if (idleTimer) {
+              clearTimeout(idleTimer)
+              idleTimer = undefined
+            }
+            const name = (part as any).toolName || "unknown"
+            const args = (part as any).args ?? (part as any).input ?? {}
+            const callID = (part as any).toolCallId || (part as any).id || `${run.runId}:tool:${crypto.randomUUID()}`
+            pushToolID(name, callID)
+            startTool(name, callID)
+            yield run.next("tool-start", { callID, name, args })
             break
           }
           case "tool-result": {
-            log.info("tool-result", { toolName: (part as any).toolName, partCount })
-            toolExecuting = false
-            callbacks.onToolResult?.((part as any).toolName, (part as any).output ?? (part as any).result ?? {})
+            const name = (part as any).toolName || "unknown"
+            const callID = (part as any).toolCallId || (part as any).id || shiftToolID(name) || `${run.runId}:tool:${crypto.randomUUID()}`
+            dropToolID(name, callID)
+            finishTool(callID)
+            resetIdle()
+            const result = (part as any).output ?? (part as any).result ?? {}
+            yield run.next("tool-result", { callID, name, result })
             break
           }
           case "tool-error" as any: {
-            const errorMsg = String((part as any).error).slice(0, 500)
-            log.error("tool-error", { toolName: (part as any).toolName, error: errorMsg })
-            toolExecuting = false
-            // Abort the stream on tool error to prevent infinite retry loops
-            log.info("aborting stream due to tool error")
-            internalAbort.abort()
+            const name = (part as any).toolName || "unknown"
+            const callID = (part as any).toolCallId || (part as any).id || shiftToolID(name)
+            if (callID) {
+              dropToolID(name, callID)
+              finishTool(callID)
+            }
+            resetIdle()
+            const error = new Error(String((part as any).error || "tool error"))
+            errorEmitted = true
+            yield run.next("error", { error })
+            abortRun(error)
             break
           }
           case "error": {
-            const msg = (part as any).error instanceof Error ? (part as any).error.message : String((part as any).error)
-            log.error("stream part error", { error: msg })
-            callbacks.onError?.((part as any).error instanceof Error ? (part as any).error : new Error(msg))
+            const err = (part as any).error
+            errorEmitted = true
+            yield run.next("error", { error: err instanceof Error ? err : new Error(String(err)) })
             break
           }
           default:
             break
         }
       }
-
-      if (idleTimer) clearTimeout(idleTimer)
-      log.info("for-await loop exited normally", { partCount, fullLength: full.length })
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err))
-      log.info("catch block entered", { name: error.name, message: error.message.slice(0, 200), partCount })
-      // Don't treat abort as a real error
-      if (error.name !== "AbortError") {
-        log.error("stream error (non-abort)", { error: error.message })
-        if (callbacks.onError) callbacks.onError(error)
-        else throw error
+      if (error.name === "AbortError") {
+        if (abortError && !externalAbort) {
+          errorEmitted = true
+          yield run.next("error", { error: abortError })
+        }
       } else {
-        log.info("AbortError caught — treating as normal completion")
+        log.error("stream error", { error: error.message })
+        errorEmitted = true
+        yield run.next("error", { error })
       }
-      // On abort or error, still call onFinish so UI cleans up
-      log.info("calling onFinish from catch", { fullLength: full.length })
-      callbacks.onFinish?.(full || "(No response)")
-      return full
     } finally {
-      log.info("finally block", { partCount, fullLength: full.length })
+      if (idleTimer) clearTimeout(idleTimer)
+      clearAllToolTimers()
       signal?.removeEventListener("abort", onExternalAbort)
+      if (abortError && !externalAbort && !errorEmitted) {
+        yield run.next("error", { error: abortError })
+      }
+      yield run.next("run-finish", { text: full, aborted })
     }
+  }
 
-    log.info("calling onFinish from normal path", { fullLength: full.length })
-    callbacks.onFinish?.(full || "(No response)")
-    return full
+  export async function stream(
+    messages: Message[],
+    callbacks: StreamCallbacks,
+    modelID?: string,
+    signal?: AbortSignal,
+    options?: StreamOptions,
+  ) {
+    let full = ""
+    try {
+      for await (const event of streamEvents(messages, modelID, signal, options)) {
+        switch (event.type) {
+          case "text-delta":
+            full += event.text
+            callbacks.onToken?.(event.text)
+            break
+          case "tool-start":
+            callbacks.onToolCall?.(event.name, event.args, event.callID)
+            break
+          case "tool-result":
+            callbacks.onToolResult?.(event.name, event.result, event.callID)
+            break
+          case "error":
+            callbacks.onError?.(event.error)
+            break
+          case "run-finish":
+            callbacks.onFinish?.(event.text || "(No response)")
+            return event.text || "(No response)"
+        }
+      }
+      callbacks.onFinish?.(full || "(No response)")
+      return full || "(No response)"
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err))
+      callbacks.onError?.(error)
+      callbacks.onFinish?.(full || "(No response)")
+      return full || "(No response)"
+    }
   }
 
   export async function generate(prompt: string, modelID?: string) {

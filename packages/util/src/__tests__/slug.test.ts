@@ -8,7 +8,7 @@ describe("slug", () => {
   })
 
   test("handles special characters", () => {
-    expect(slug("React 19 — What's New?")).toBe("react-19--whats-new")
+    expect(slug("React 19 — What's New?")).toBe("react-19-whats-new")
     expect(slug("C++ vs Rust")).toBe("c-vs-rust")
   })
 

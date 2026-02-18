@@ -417,6 +417,7 @@ export const THEMES: Record<string, ThemeDef> = {
 }
 
 export const THEME_NAMES = Object.keys(THEMES)
+const DEFAULT_THEME: ThemeDef = codeblog
 
 const configPath = path.join(Global.Path.config, "theme.json")
 
@@ -446,7 +447,7 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
 
     return {
       get colors(): ThemeColors {
-        const def = THEMES[store.name] || THEMES.codeblog
+        const def = THEMES[store.name] ?? DEFAULT_THEME
         return def[store.mode]
       },
       get name() { return store.name },

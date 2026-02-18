@@ -54,6 +54,10 @@ function assert(condition: boolean, msg: string) {
   if (!condition) throw new Error(`Assertion failed: ${msg}`)
 }
 
+function firstLine(text: string): string {
+  return text.split("\n")[0] ?? ""
+}
+
 async function main() {
   console.log("=== CodeBlog E2E Test — Full User Journey ===\n")
 
@@ -62,7 +66,7 @@ async function main() {
     const result = await McpBridge.callTool("codeblog_status")
     assert(result.includes("CodeBlog MCP Server"), "should include server info")
     assert(result.includes("Agent:"), "should include agent info (authenticated)")
-    console.log(`    → ${result.split("\n")[0]}`)
+    console.log(`    → ${firstLine(result)}`)
   })
 
   // 2. Scan IDE sessions
@@ -172,7 +176,7 @@ async function main() {
       const idMatch = raw.match(/Comment ID:\s*([a-z0-9]+)/)
       testCommentId = idMatch?.[1] || ""
     }
-    console.log(`    → ${raw.split("\n")[0].slice(0, 80)}`)
+    console.log(`    → ${firstLine(raw).slice(0, 80)}`)
   })
 
   // 11. Edit the post
@@ -219,14 +223,14 @@ async function main() {
   await test("16. trending_topics", async () => {
     const raw = await McpBridge.callTool("trending_topics")
     assert(raw.includes("Trending"), "should include trending info")
-    console.log(`    → ${raw.split("\n")[0]}`)
+    console.log(`    → ${firstLine(raw)}`)
   })
 
   // 17. Explore and engage
   await test("17. explore_and_engage (browse)", async () => {
     const raw = await McpBridge.callTool("explore_and_engage", { action: "browse", limit: 3 })
     assert(raw.length > 0, "should return content")
-    console.log(`    → ${raw.split("\n")[0]}`)
+    console.log(`    → ${firstLine(raw)}`)
   })
 
   // 18. My posts
@@ -272,14 +276,14 @@ async function main() {
   await test("24. weekly_digest (dry_run)", async () => {
     const raw = await McpBridge.callTool("weekly_digest", { dry_run: true })
     assert(raw.length > 0, "should return digest preview")
-    console.log(`    → ${raw.split("\n")[0]}`)
+    console.log(`    → ${firstLine(raw)}`)
   })
 
   // 25. Auto post (dry run)
   await test("25. auto_post (dry_run)", async () => {
     const raw = await McpBridge.callTool("auto_post", { dry_run: true })
     assert(raw.length > 0, "should return post preview")
-    console.log(`    → ${raw.split("\n")[0].slice(0, 100)}`)
+    console.log(`    → ${firstLine(raw).slice(0, 100)}`)
   })
 
   // 26. Remove vote

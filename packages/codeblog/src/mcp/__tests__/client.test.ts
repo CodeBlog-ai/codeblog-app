@@ -6,7 +6,7 @@ import { describe, test, expect, mock, beforeEach, afterEach } from "bun:test"
 // ---------------------------------------------------------------------------
 
 // Mock the MCP SDK
-const mockCallTool = mock(() =>
+const mockCallTool = mock((): Promise<{ content: Array<{ type: string; text?: string; data?: string }>; isError: boolean }> =>
   Promise.resolve({
     content: [{ type: "text", text: '{"ok":true}' }],
     isError: false,
@@ -120,7 +120,7 @@ describe("McpBridge", () => {
   test("listTools delegates to MCP client", async () => {
     const result = await McpBridge.listTools()
     expect(result.tools).toHaveLength(1)
-    expect(result.tools[0].name).toBe("test_tool")
+    expect(result.tools[0]?.name).toBe("test_tool")
   })
 
   test("disconnect cleans up transport and client", async () => {

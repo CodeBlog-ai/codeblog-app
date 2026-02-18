@@ -40,7 +40,7 @@ function makeToolCallStreamResult() {
   }
 }
 
-let streamFactory = () => makeStreamResult()
+let streamFactory: () => { fullStream: AsyncGenerator<any, void, unknown> } = () => makeStreamResult()
 
 mock.module("ai", () => ({
   streamText: () => streamFactory(),
@@ -52,6 +52,15 @@ mock.module("ai", () => ({
 mock.module("../provider", () => ({
   AIProvider: {
     getModel: mock(() => Promise.resolve({ id: "test-model" })),
+    resolveModelCompat: mock(() => Promise.resolve({
+      providerID: "openai-compatible",
+      modelID: "test-model",
+      api: "openai-compatible",
+      compatProfile: "openai-compatible",
+      cacheKey: "openai-compatible:openai-compatible",
+      stripParallelToolCalls: true,
+      normalizeToolSchema: true,
+    })),
     DEFAULT_MODEL: "test-model",
   },
 }))
@@ -69,7 +78,7 @@ describe("AIChat", () => {
   // ---------------------------------------------------------------------------
 
   test("Message type accepts user, assistant, system roles", () => {
-    const messages: AIChat.Message[] = [
+    const messages = [
       { role: "user", content: "hello" },
       { role: "assistant", content: "hi" },
       { role: "system", content: "you are a bot" },

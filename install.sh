@@ -7,6 +7,8 @@ set -euo pipefail
 INSTALL_DIR="${CODEBLOG_INSTALL_DIR:-$HOME/.local/bin}"
 BIN_NAME="codeblog"
 NPM_REGISTRY="https://registry.npmjs.org"
+RUN_ONBOARD="auto"
+WAS_INSTALLED=0
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -19,6 +21,29 @@ info() { echo -e "${CYAN}[codeblog]${NC} $1"; }
 success() { echo -e "${GREEN}[codeblog]${NC} $1"; }
 warn() { echo -e "${YELLOW}[codeblog]${NC} $1"; }
 error() { echo -e "${RED}[codeblog]${NC} $1" >&2; exit 1; }
+
+usage() {
+  cat <<EOF
+Usage: curl -fsSL https://codeblog.ai/install.sh | bash -s -- [options]
+
+Options:
+  --onboard       Run first-time setup wizard after install
+  --no-onboard    Skip first-time setup wizard after install
+  -h, --help      Show this help message
+EOF
+}
+
+parse_args() {
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --onboard) RUN_ONBOARD="yes" ;;
+      --no-onboard) RUN_ONBOARD="no" ;;
+      -h|--help) usage; exit 0 ;;
+      *) error "Unknown argument: $1 (use --help)" ;;
+    esac
+    shift
+  done
+}
 
 detect_platform() {
   local os arch
@@ -48,6 +73,9 @@ get_latest_version() {
 install_binary() {
   local platform="$1"
   local pkg="codeblog-app-${platform}"
+  if [ -x "$INSTALL_DIR/$BIN_NAME" ]; then
+    WAS_INSTALLED=1
+  fi
 
   info "Checking latest version..."
   local version
@@ -80,6 +108,36 @@ install_binary() {
   success "Installed codeblog v$version to $INSTALL_DIR/$BIN_NAME"
 }
 
+should_run_onboard() {
+  if [ "$RUN_ONBOARD" = "no" ]; then
+    return 1
+  fi
+  if [ "$RUN_ONBOARD" = "yes" ]; then
+    return 0
+  fi
+  if [ "$WAS_INSTALLED" -eq 0 ]; then
+    return 0
+  fi
+  return 1
+}
+
+run_onboard() {
+  if ! should_run_onboard; then
+    return
+  fi
+
+  if [ ! -t 1 ] || [ ! -r /dev/tty ]; then
+    warn "Skipping first-time setup (no interactive TTY). Run: codeblog setup"
+    return
+  fi
+
+  echo ""
+  info "Starting first-time setup wizard..."
+  if ! "$INSTALL_DIR/$BIN_NAME" setup < /dev/tty > /dev/tty 2>&1; then
+    warn "Setup was not completed. You can rerun anytime: codeblog setup"
+  fi
+}
+
 setup_path() {
   if [[ ":$PATH:" == *":$INSTALL_DIR:"* ]]; then
     return
@@ -101,6 +159,8 @@ setup_path() {
 }
 
 main() {
+  parse_args "$@"
+
   echo ""
   echo -e "${CYAN}  ██████╗ ██████╗ ██████╗ ███████╗${BOLD}██████╗ ██╗      ██████╗  ██████╗ ${NC}"
   echo -e "${CYAN} ██╔════╝██╔═══██╗██╔══██╗██╔════╝${BOLD}██╔══██╗██║     ██╔═══██╗██╔════╝ ${NC}"
@@ -116,6 +176,7 @@ main() {
 
   install_binary "$platform"
   setup_path
+  run_onboard
 
   echo ""
   success "codeblog installed successfully!"
@@ -123,6 +184,7 @@ main() {
   echo -e "  ${BOLD}Get started:${NC}"
   echo ""
   echo -e "    ${CYAN}codeblog${NC}             Launch interactive TUI"
+  echo -e "    ${CYAN}codeblog setup${NC}       Run first-time setup wizard"
   echo -e "    ${CYAN}codeblog --help${NC}      See all commands"
   echo ""
   echo -e "  ${YELLOW}Note:${NC} Restart your terminal or run: source ~/.zshrc"

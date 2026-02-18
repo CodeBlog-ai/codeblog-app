@@ -3,6 +3,7 @@ import { Auth } from "../../auth"
 import { OAuth } from "../../auth/oauth"
 import { McpBridge } from "../../mcp/client"
 import { UI } from "../ui"
+import { Config } from "../../config"
 
 export let setupCompleted = false
 
@@ -190,7 +191,7 @@ async function scanAndPublish(): Promise<void> {
 
 // ─── AI Configuration ────────────────────────────────────────────────────────
 
-async function aiConfigPrompt(): Promise<void> {
+async function aiQuickConfigPrompt(): Promise<void> {
   const { AIProvider } = await import("../../ai/provider")
   const hasKey = await AIProvider.hasAnyKey()
 
@@ -287,6 +288,271 @@ async function aiConfigPrompt(): Promise<void> {
   }
 }
 
+type WizardMode = "quick" | "manual"
+
+interface ProviderChoice {
+  name: string
+  providerID: string
+  api: "anthropic" | "openai" | "google" | "openai-compatible"
+  baseURL?: string
+  hint?: string
+}
+
+const PROVIDER_CHOICES: ProviderChoice[] = [
+  { name: "OpenAI", providerID: "openai", api: "openai", baseURL: "https://api.openai.com", hint: "Codex OAuth + API key style" },
+  { name: "Anthropic", providerID: "anthropic", api: "anthropic", baseURL: "https://api.anthropic.com", hint: "Claude API key" },
+  { name: "Google", providerID: "google", api: "google", baseURL: "https://generativelanguage.googleapis.com", hint: "Gemini API key" },
+  { name: "OpenRouter", providerID: "openai-compatible", api: "openai-compatible", baseURL: "https://openrouter.ai/api", hint: "OpenAI-compatible" },
+  { name: "vLLM", providerID: "openai-compatible", api: "openai-compatible", baseURL: "http://127.0.0.1:8000", hint: "Local/self-hosted OpenAI-compatible" },
+  { name: "MiniMax", providerID: "openai-compatible", api: "openai-compatible", baseURL: "https://api.minimax.io", hint: "OpenAI-compatible endpoint" },
+  { name: "Moonshot AI (Kimi K2.5)", providerID: "openai-compatible", api: "openai-compatible", baseURL: "https://api.moonshot.ai", hint: "OpenAI-compatible endpoint" },
+  { name: "xAI (Grok)", providerID: "openai-compatible", api: "openai-compatible", baseURL: "https://api.x.ai", hint: "OpenAI-compatible endpoint" },
+  { name: "Qianfan", providerID: "openai-compatible", api: "openai-compatible", baseURL: "https://qianfan.baidubce.com", hint: "OpenAI-compatible endpoint" },
+  { name: "Vercel AI Gateway", providerID: "openai-compatible", api: "openai-compatible", baseURL: "https://ai-gateway.vercel.sh", hint: "OpenAI-compatible endpoint" },
+  { name: "OpenCode Zen", providerID: "openai-compatible", api: "openai-compatible", baseURL: "https://opencode.ai/zen", hint: "OpenAI-compatible endpoint" },
+  { name: "Xiaomi", providerID: "anthropic", api: "anthropic", baseURL: "https://api.xiaomimimo.com/anthropic", hint: "Anthropic-compatible endpoint" },
+  { name: "Synthetic", providerID: "anthropic", api: "anthropic", baseURL: "https://api.synthetic.new", hint: "Anthropic-compatible endpoint" },
+  { name: "Together AI", providerID: "openai-compatible", api: "openai-compatible", baseURL: "https://api.together.xyz", hint: "OpenAI-compatible endpoint" },
+  { name: "Hugging Face", providerID: "openai-compatible", api: "openai-compatible", baseURL: "https://router.huggingface.co", hint: "OpenAI-compatible endpoint" },
+  { name: "Venice AI", providerID: "openai-compatible", api: "openai-compatible", baseURL: "https://api.venice.ai/api", hint: "OpenAI-compatible endpoint" },
+  { name: "LiteLLM", providerID: "openai-compatible", api: "openai-compatible", baseURL: "http://localhost:4000", hint: "Unified OpenAI-compatible gateway" },
+  { name: "Cloudflare AI Gateway", providerID: "anthropic", api: "anthropic", hint: "Enter full Anthropic gateway URL manually" },
+  { name: "Custom Provider", providerID: "openai-compatible", api: "openai-compatible", hint: "Any OpenAI-compatible URL" },
+]
+
+async function fetchOpenAIModels(baseURL: string, key: string): Promise<string[]> {
+  try {
+    const clean = baseURL.replace(/\/+$/, "")
+    const url = clean.endsWith("/v1") ? `${clean}/models` : `${clean}/v1/models`
+    const r = await fetch(url, {
+      headers: { Authorization: `Bearer ${key}` },
+      signal: AbortSignal.timeout(8000),
+    })
+    if (!r.ok) return []
+    const data = await r.json() as { data?: Array<{ id: string }> }
+    return data.data?.map((m) => m.id) || []
+  } catch {
+    return []
+  }
+}
+
+function isOfficialOpenAIBase(baseURL: string): boolean {
+  try {
+    const u = new URL(baseURL)
+    return u.hostname === "api.openai.com"
+  } catch {
+    return false
+  }
+}
+
+async function verifyEndpoint(choice: ProviderChoice, baseURL: string, key: string): Promise<{ ok: boolean; detail: string; detectedApi?: Config.ModelApi }> {
+  try {
+    if (choice.api === "anthropic") {
+      const clean = baseURL.replace(/\/+$/, "")
+      const r = await fetch(`${clean}/v1/messages`, {
+        method: "POST",
+        headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+        body: JSON.stringify({ model: "claude-3-5-haiku-latest", max_tokens: 1, messages: [{ role: "user", content: "ping" }] }),
+        signal: AbortSignal.timeout(8000),
+      })
+      if (r.status !== 404) return { ok: true, detail: `Anthropic endpoint reachable (${r.status})`, detectedApi: "anthropic" }
+      return { ok: false, detail: "Anthropic endpoint returned 404" }
+    }
+
+    if (choice.api === "google") {
+      const clean = baseURL.replace(/\/+$/, "")
+      const r = await fetch(`${clean}/v1beta/models?key=${encodeURIComponent(key)}`, {
+        signal: AbortSignal.timeout(8000),
+      })
+      if (r.ok || r.status === 401 || r.status === 403) return { ok: true, detail: `Google endpoint reachable (${r.status})` }
+      return { ok: false, detail: `Google endpoint responded ${r.status}` }
+    }
+
+    const { probe } = await import("../../ai/configure")
+    const detected = await probe(baseURL, key)
+    if (detected === "anthropic") return { ok: true, detail: "Detected Anthropic API format", detectedApi: "anthropic" }
+    if (detected === "openai") {
+      const detectedApi: Config.ModelApi =
+        choice.providerID === "openai" && isOfficialOpenAIBase(baseURL)
+          ? "openai"
+          : "openai-compatible"
+      return { ok: true, detail: "Detected OpenAI API format", detectedApi }
+    }
+
+    const models = await fetchOpenAIModels(baseURL, key)
+    if (models.length > 0) {
+      const detectedApi: Config.ModelApi =
+        choice.providerID === "openai" && isOfficialOpenAIBase(baseURL)
+          ? "openai"
+          : "openai-compatible"
+      return { ok: true, detail: `Model endpoint reachable (${models.length} models)`, detectedApi }
+    }
+
+    return { ok: false, detail: "Could not detect endpoint format or list models" }
+  } catch (err) {
+    return { ok: false, detail: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+async function chooseProvider(): Promise<ProviderChoice | undefined> {
+  console.log("")
+  console.log(`  ${UI.Style.TEXT_NORMAL_BOLD}Model/auth provider${UI.Style.TEXT_NORMAL}`)
+  const idx = await UI.select(
+    "  Choose a provider",
+    [...PROVIDER_CHOICES.map((p) => p.hint ? `${p.name} (${p.hint})` : p.name), "Skip for now"],
+  )
+  if (idx < 0 || idx >= PROVIDER_CHOICES.length) return undefined
+  return PROVIDER_CHOICES[idx]
+}
+
+async function chooseModel(choice: ProviderChoice, mode: WizardMode, baseURL: string, key: string): Promise<string | undefined> {
+  const { AIProvider } = await import("../../ai/provider")
+  const builtin = Object.values(AIProvider.BUILTIN_MODELS).filter((m) => m.providerID === choice.providerID).map((m) => m.id)
+  const openaiCustom = choice.providerID === "openai" && !isOfficialOpenAIBase(baseURL)
+  const useRemote = choice.providerID === "openai-compatible" || openaiCustom
+
+  if (mode === "quick") {
+    if (choice.providerID === "anthropic") return "claude-sonnet-4-20250514"
+    if (choice.providerID === "openai" && !openaiCustom) return "gpt-4o-mini"
+    if (choice.providerID === "google") return "gemini-2.5-flash"
+    const remote = await fetchOpenAIModels(baseURL, key)
+    return remote[0] || "gpt-4o-mini"
+  }
+
+  let options = builtin
+  if (useRemote) {
+    const remote = await fetchOpenAIModels(baseURL, key)
+    options = remote
+  }
+  if (options.length === 0) {
+    const typed = await UI.input(`  Model ID: `)
+    return typed.trim() || "gpt-4o-mini"
+  }
+
+  const idx = await UI.select("  Choose a model", [...options, "Custom model id"])
+  if (idx < 0) return undefined
+  if (idx >= options.length) {
+    const typed = await UI.input(`  Model ID: `)
+    return typed.trim() || options[0]!
+  }
+  return options[idx]!
+}
+
+export async function runAISetupWizard(source: "setup" | "command" = "command"): Promise<void> {
+  const { AIProvider } = await import("../../ai/provider")
+  const hasKey = await AIProvider.hasAnyKey()
+
+  UI.divider()
+  if (source === "setup") {
+    await UI.typeText("AI onboarding")
+  } else {
+    await UI.typeText("CodeBlog AI setup wizard")
+  }
+
+  if (hasKey) {
+    const keep = await UI.waitEnter("AI is already configured. Press Enter to reconfigure, or Esc to keep current config")
+    if (keep === "escape") return
+  }
+
+  console.log("")
+  const modeIdx = await UI.select("  Onboarding mode", ["QuickStart (recommended)", "Manual", "Skip for now"])
+  if (modeIdx < 0 || modeIdx === 2) {
+    UI.info("Skipped AI setup.")
+    return
+  }
+  const mode = modeIdx === 0 ? "quick" : "manual"
+
+  const provider = await chooseProvider()
+  if (!provider) {
+    UI.info("Skipped AI setup.")
+    return
+  }
+  if (provider.hint) UI.info(`${provider.name}: ${provider.hint}`)
+
+  const defaultBaseURL = provider.baseURL || ""
+  const needsBasePrompt =
+    mode === "manual" ||
+    provider.providerID === "openai-compatible" ||
+    provider.providerID === "openai" ||
+    !defaultBaseURL
+  let baseURL = defaultBaseURL
+
+  if (needsBasePrompt) {
+    const endpointHint = defaultBaseURL ? ` [${defaultBaseURL}]` : ""
+    const entered = await UI.inputWithEscape(`  Endpoint base URL${endpointHint}: `)
+    if (entered === null) {
+      UI.info("Skipped AI setup.")
+      return
+    }
+    baseURL = entered.trim() || defaultBaseURL
+  }
+
+  const keyRaw = await UI.inputWithEscape(`  API key / Bearer token: `)
+  if (keyRaw === null) {
+    UI.info("Skipped AI setup.")
+    return
+  }
+  const key = keyRaw.trim()
+  if (!key || key.length < 5) {
+    UI.warn("Credential seems invalid, setup skipped.")
+    return
+  }
+
+  if (!baseURL) {
+    UI.warn("Endpoint URL is required for this provider.")
+    return
+  }
+
+  let verified = false
+  let detectedApi: Config.ModelApi | undefined
+
+  while (!verified) {
+    await shimmerLine("Verifying endpoint...", 900)
+    const verify = await verifyEndpoint(provider, baseURL, key)
+    detectedApi = verify.detectedApi
+    if (verify.ok) {
+      UI.success(verify.detail)
+      verified = true
+      break
+    }
+    UI.warn(`Endpoint verification failed: ${verify.detail}`)
+    const retry = await UI.waitEnter("Press Enter to retry verification, or Esc to continue anyway")
+    if (retry === "escape") break
+  }
+
+  const selectedModel = await chooseModel(provider, mode, baseURL, key)
+  if (!selectedModel) {
+    UI.info("Skipped AI setup.")
+    return
+  }
+  const cfg = await Config.load()
+  const providers = cfg.providers || {}
+  const resolvedApi = detectedApi || provider.api
+  const resolvedCompat = provider.providerID === "openai-compatible" && resolvedApi === "openai"
+    ? "openai-compatible"
+    : resolvedApi
+  const providerConfig: Config.ProviderConfig = {
+    api_key: key,
+    api: resolvedApi,
+    compat_profile: resolvedCompat,
+  }
+  if (baseURL) providerConfig.base_url = baseURL
+  providers[provider.providerID] = providerConfig
+
+  const model = provider.providerID === "openai-compatible" && !selectedModel.includes("/")
+    ? `openai-compatible/${selectedModel}`
+    : selectedModel
+
+  await Config.save({
+    providers,
+    default_provider: provider.providerID,
+    model,
+  })
+
+  UI.success(`AI configured: ${provider.name} (${model})`)
+  console.log(`  ${UI.Style.TEXT_DIM}You can rerun this wizard with: codeblog ai setup${UI.Style.TEXT_NORMAL}`)
+}
+
 // ─── Setup Command ───────────────────────────────────────────────────────────
 
 export const SetupCommand: CommandModule = {
@@ -325,7 +591,14 @@ export const SetupCommand: CommandModule = {
     const token = await Auth.get()
     UI.success(`Authenticated as ${token?.username || "user"}!`)
 
-    // Phase 3: Interactive scan & publish
+    // Phase 3: AI configuration (OpenClaw-like provider chooser)
+    UI.divider()
+    await UI.typeText("Let's connect your AI provider first.", { charDelay: 10 })
+    await UI.typeText("Choose a provider, enter key/endpoint, and we'll verify it.", { charDelay: 10 })
+    console.log("")
+    await runAISetupWizard("setup")
+
+    // Phase 4: Interactive scan & publish
     UI.divider()
 
     await UI.typeText("Great! Let's see what you've been working on.")
@@ -339,9 +612,6 @@ export const SetupCommand: CommandModule = {
     } else {
       await UI.typeText("Skipped. You can scan and publish later in the app.")
     }
-
-    // Phase 4: AI configuration
-    await aiConfigPrompt()
 
     // Phase 5: Transition to TUI
     UI.divider()

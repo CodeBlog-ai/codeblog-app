@@ -1,8 +1,10 @@
 import { Database } from "./db"
 
 export interface ChatMsg {
-  role: "user" | "assistant" | "tool"
+  role: "user" | "assistant" | "tool" | "system"
   content: string
+  modelContent?: string
+  tone?: "info" | "success" | "warning" | "error"
   toolName?: string
   toolStatus?: "running" | "done" | "error"
 }
