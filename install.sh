@@ -184,7 +184,11 @@ install_binary() {
 
   # macOS code signing
   if [ "$(uname -s)" = "Darwin" ] && command -v codesign >/dev/null 2>&1; then
-    codesign --sign - --force "$INSTALL_DIR/$BIN_NAME" 2>/dev/null || true
+    codesign --remove-signature "$INSTALL_DIR/$BIN_NAME" >/dev/null 2>&1 || true
+    codesign --sign - --force "$INSTALL_DIR/$BIN_NAME" >/dev/null 2>&1 || \
+      fail "macOS code signing failed for $INSTALL_DIR/$BIN_NAME"
+    codesign --verify --deep --strict "$INSTALL_DIR/$BIN_NAME" >/dev/null 2>&1 || \
+      fail "Installed binary failed macOS signature verification"
   fi
   spinner_stop "Installed to ${DIM}${INSTALL_DIR}/${BIN_NAME}${NC}"
 

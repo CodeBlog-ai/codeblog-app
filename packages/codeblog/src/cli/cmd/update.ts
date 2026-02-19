@@ -112,8 +112,24 @@ export const UpdateCommand: CommandModule = {
       await fs.chmod(bin, 0o755)
     }
     if (os === "darwin") {
+      await Bun.spawn(["codesign", "--remove-signature", bin], { stdout: "ignore", stderr: "ignore" }).exited
       const cs = Bun.spawn(["codesign", "--sign", "-", "--force", bin], { stdout: "ignore", stderr: "ignore" })
-      await cs.exited
+      if ((await cs.exited) !== 0) {
+        await fs.rm(tmp, { recursive: true, force: true })
+        UI.error("Update installed but macOS code signing failed. Please reinstall with install.sh.")
+        process.exitCode = 1
+        return
+      }
+      const verify = Bun.spawn(["codesign", "--verify", "--deep", "--strict", bin], {
+        stdout: "ignore",
+        stderr: "ignore",
+      })
+      if ((await verify.exited) !== 0) {
+        await fs.rm(tmp, { recursive: true, force: true })
+        UI.error("Update installed but signature verification failed. Please reinstall with install.sh.")
+        process.exitCode = 1
+        return
+      }
     }
 
     await fs.rm(tmp, { recursive: true, force: true })

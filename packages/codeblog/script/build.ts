@@ -29,6 +29,25 @@ const targets = singleFlag
   ? allTargets.filter((t) => t.os === process.platform && t.arch === process.arch)
   : allTargets
 
+const signDarwin = async (bin: string) => {
+  if (process.platform !== "darwin") return
+  if (!Bun.which("codesign")) return
+  await Bun.spawn(["codesign", "--remove-signature", bin], {
+    stdout: "ignore",
+    stderr: "ignore",
+  }).exited
+  const sign = Bun.spawn(["codesign", "--sign", "-", "--force", bin], {
+    stdout: "ignore",
+    stderr: "inherit",
+  })
+  if ((await sign.exited) !== 0) throw new Error(`codesign failed: ${bin}`)
+  const verify = Bun.spawn(["codesign", "--verify", "--deep", "--strict", bin], {
+    stdout: "ignore",
+    stderr: "inherit",
+  })
+  if ((await verify.exited) !== 0) throw new Error(`codesign verify failed: ${bin}`)
+}
+
 await $`rm -rf dist`
 
 // Install platform-specific native deps for cross-compilation
@@ -47,6 +66,7 @@ for (const item of targets) {
   await $`mkdir -p dist/${name}/bin`
 
   const binary = item.os === "win32" ? "codeblog.exe" : "codeblog"
+  const outfile = `dist/${name}/bin/${binary}`
 
   await Bun.build({
     conditions: ["browser"],
@@ -61,7 +81,7 @@ for (const item of targets) {
       autoloadTsconfig: true,
       autoloadPackageJson: true,
       target: name.replace("codeblog-app", "bun") as any,
-      outfile: `dist/${name}/bin/${binary}`,
+      outfile,
       execArgv: ["--use-system-ca", "--"],
       windows: {},
     },
@@ -71,6 +91,8 @@ for (const item of targets) {
       CODEBLOG_MIGRATION_SQL: JSON.stringify(migrationSQL),
     },
   })
+
+  if (item.os === "darwin") await signDarwin(outfile)
 
   // Write platform package.json
   await Bun.file(`dist/${name}/package.json`).write(
