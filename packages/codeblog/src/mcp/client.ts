@@ -1,103 +1,48 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
-import { resolve, dirname } from "path"
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
+import { createServer } from "codeblog-mcp"
 import { Log } from "../util/log"
 
 const log = Log.create({ service: "mcp" })
 
-const CONNECTION_TIMEOUT_MS = 30_000
-
 let client: Client | null = null
-let transport: StdioClientTransport | null = null
+let clientTransport: InstanceType<typeof InMemoryTransport> | null = null
 let connecting: Promise<Client> | null = null
-
-function getMcpBinaryPath(): string {
-  try {
-    const resolved = require.resolve("codeblog-mcp/dist/index.js")
-    return resolved
-  } catch {
-    return resolve(dirname(new URL(import.meta.url).pathname), "../../node_modules/codeblog-mcp/dist/index.js")
-  }
-}
-
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
-    promise.then(
-      (v) => { clearTimeout(timer); resolve(v) },
-      (e) => { clearTimeout(timer); reject(e) },
-    )
-  })
-}
 
 async function connect(): Promise<Client> {
   if (client) return client
-
-  // If another caller is already connecting, reuse that promise
   if (connecting) return connecting
 
   connecting = (async (): Promise<Client> => {
-    const mcpPath = getMcpBinaryPath()
-    log.info("connecting", { path: mcpPath })
+    log.info("connecting via InMemoryTransport")
 
-    const env: Record<string, string> = {}
-    for (const [k, v] of Object.entries(process.env)) {
-      if (v !== undefined) env[k] = v
-    }
-
-    const t = new StdioClientTransport({
-      command: "node",
-      args: [mcpPath],
-      env,
-      stderr: "pipe",
-    })
-
-    // Capture subprocess stderr for diagnostics
-    const stderrChunks: string[] = []
-    const stderrStream = t.stderr
-    if (stderrStream) {
-      stderrStream.on("data", (chunk: Buffer) => {
-        const line = chunk.toString().trim()
-        if (line) {
-          stderrChunks.push(line)
-          log.warn("mcp-subprocess-stderr", { output: line })
-        }
-      })
-    }
+    const server = createServer()
+    const [ct, serverTransport] = InMemoryTransport.createLinkedPair()
 
     const c = new Client({ name: "codeblog-cli", version: "2.0.0" })
 
-    // Log when the subprocess exits unexpectedly
     c.onclose = () => {
-      log.warn("mcp-connection-closed", {
-        stderrTail: stderrChunks.slice(-5).join("\n") || "(empty)",
-      })
-      // Clear module-level refs so next call will reconnect
+      log.warn("mcp-connection-closed")
       client = null
-      transport = null
+      clientTransport = null
     }
 
     try {
-      await withTimeout(c.connect(t), CONNECTION_TIMEOUT_MS, "MCP connection")
+      await server.connect(serverTransport)
+      await c.connect(ct)
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err)
-      log.error("mcp-connect-failed", {
-        error: errMsg,
-        stderrTail: stderrChunks.slice(-5).join("\n") || "(empty)",
-      })
-      // Clean up on failure so next call can retry
-      await t.close().catch(() => {})
+      log.error("mcp-connect-failed", { error: errMsg })
+      await ct.close().catch(() => {})
       throw err
     }
 
     log.info("connected", {
       server: c.getServerVersion()?.name,
       version: c.getServerVersion()?.version,
-      pid: t.pid,
     })
 
-    // Only assign to module-level vars after successful connection
-    transport = t
+    clientTransport = ct
     client = c
     return c
   })()
@@ -105,17 +50,12 @@ async function connect(): Promise<Client> {
   try {
     return await connecting
   } catch (err) {
-    // Reset connecting so next call can retry
     connecting = null
     throw err
   }
 }
 
 export namespace McpBridge {
-  /**
-   * Call an MCP tool by name with arguments.
-   * Returns the text content from the tool result.
-   */
   export async function callTool(
     name: string,
     args: Record<string, unknown> = {},
@@ -140,9 +80,6 @@ export namespace McpBridge {
     return extractText(result)
   }
 
-  /**
-   * Call an MCP tool and parse the result as JSON.
-   */
   export async function callToolJSON<T = unknown>(
     name: string,
     args: Record<string, unknown> = {},
@@ -155,23 +92,17 @@ export namespace McpBridge {
     }
   }
 
-  /**
-   * List all available MCP tools.
-   */
   export async function listTools() {
     const c = await connect()
     return c.listTools()
   }
 
-  /**
-   * Disconnect the MCP client and kill the subprocess.
-   */
   export async function disconnect(): Promise<void> {
-    log.info("disconnecting", { hadClient: !!client, hadTransport: !!transport })
+    log.info("disconnecting", { hadClient: !!client })
     connecting = null
-    if (transport) {
-      await transport.close().catch(() => {})
-      transport = null
+    if (clientTransport) {
+      await clientTransport.close().catch(() => {})
+      clientTransport = null
     }
     client = null
   }
