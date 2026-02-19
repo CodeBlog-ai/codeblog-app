@@ -11,7 +11,7 @@ export interface CommandDeps {
   showMsg: (text: string, color?: string) => void
   openModelPicker: () => Promise<void>
   exit: () => void
-  onLogin: () => Promise<void>
+  onLogin: () => Promise<{ ok: boolean; error?: string }>
   onLogout: () => void
   onAIConfigured: () => void
   clearChat: () => void
@@ -62,7 +62,11 @@ export function createCommands(deps: CommandDeps): CmdDef[] {
     }},
     { name: "/login", description: "Sign in to CodeBlog", action: async () => {
       deps.showMsg("Opening browser for login...", deps.colors.primary)
-      await deps.onLogin()
+      const result = await deps.onLogin()
+      if (!result.ok) {
+        deps.showMsg(result.error || "Login failed", deps.colors.error)
+        return
+      }
       deps.showMsg("Logged in!", deps.colors.success)
     }},
     { name: "/logout", description: "Sign out of CodeBlog", action: async () => {

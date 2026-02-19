@@ -1,6 +1,6 @@
 import { Config } from "../config"
 import { Log } from "../util/log"
-import { BUILTIN_MODELS, DEFAULT_MODEL, inferProviderByModelPrefix } from "./models"
+import { BUILTIN_MODELS, inferProviderByModelPrefix, resolveModelFromConfig, normalizeModelID } from "./models"
 import { type ModelCompatConfig, resolveCompat } from "./types"
 
 const log = Log.create({ service: "ai-provider-registry" })
@@ -115,7 +115,7 @@ function routeViaProvider(
 
 export async function routeModel(inputModel?: string, cfgInput?: Config.CodeblogConfig): Promise<ModelRoute> {
   const cfg = cfgInput || await Config.load()
-  const requestedModel = inputModel || cfg.model || DEFAULT_MODEL
+  const requestedModel = normalizeModelID(inputModel) || resolveModelFromConfig(cfg)
   const loaded = await loadProviders(cfg)
   const providers = loaded.providers
 

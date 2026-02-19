@@ -57,9 +57,9 @@ async function fetchFirstModel(base: string, key: string): Promise<string | null
     const data = await r.json() as { data?: Array<{ id: string }> }
     if (!data.data || data.data.length === 0) return null
 
-    // Prefer capable models: claude-sonnet > gpt-4o > claude-opus > first available
+    // Prefer stable defaults first; avoid niche/legacy IDs unless explicitly chosen.
     const ids = data.data.map((m) => m.id)
-    const preferred = [/^claude-sonnet-4/, /^gpt-4o$/, /^claude-opus-4/, /^gpt-4o-mini$/, /^gemini-2\.5-flash$/]
+    const preferred = [/^gpt-5\.2$/, /^claude-sonnet-4(?:-5)?/, /^gpt-5(?:\.|$|-)/, /^gpt-4o$/, /^claude-opus-4/, /^gpt-4o-mini$/, /^gemini-2\.5-flash$/]
     for (const pattern of preferred) {
       const match = ids.find((id) => pattern.test(id))
       if (match) return match
@@ -101,12 +101,14 @@ export async function saveProvider(url: string, key: string): Promise<{ provider
     // Auto-set model if not already configured
     const update: Record<string, unknown> = { providers, default_provider: provider }
     if (!cfg.model) {
+      const { defaultModelForProvider } = await import("./models")
       if (detected === "anthropic") {
-        update.model = "claude-sonnet-4-20250514"
+        update.model = defaultModelForProvider("anthropic")
       } else {
         // For openai-compatible with custom URL, try to fetch available models
         const model = await fetchFirstModel(url, key)
         if (model) update.model = `openai-compatible/${model}`
+        else update.model = `openai-compatible/${defaultModelForProvider("openai-compatible")}`
       }
     }
 
@@ -128,9 +130,8 @@ export async function saveProvider(url: string, key: string): Promise<{ provider
   // Auto-set model for known providers
   const update: Record<string, unknown> = { providers, default_provider: provider }
   if (!cfg.model) {
-    const { AIProvider } = await import("./provider")
-    const models = Object.values(AIProvider.BUILTIN_MODELS).filter((m) => m.providerID === provider)
-    if (models.length > 0) update.model = models[0]!.id
+    const { defaultModelForProvider } = await import("./models")
+    update.model = defaultModelForProvider(provider)
   }
 
   await Config.save(update)

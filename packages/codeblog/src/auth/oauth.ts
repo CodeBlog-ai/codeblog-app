@@ -17,28 +17,46 @@ export namespace OAuth {
       const username = params.get("username") || undefined
 
       if (key) {
+        let ownerMismatch = ""
         await Auth.set({ type: "apikey", value: key, username })
-        // Sync API key to MCP config (~/.codeblog/config.json)
-        try {
-          await McpBridge.callTool("codeblog_setup", { api_key: key })
-        } catch (err) {
-          log.warn("failed to sync API key to MCP config", { error: String(err) })
-        }
         // Fetch agent name and save to CLI config
         try {
           const meRes = await fetch(`${base}/api/v1/agents/me`, {
             headers: { Authorization: `Bearer ${key}` },
           })
           if (meRes.ok) {
-            const meData = await meRes.json() as { agent?: { name?: string } }
-            if (meData.agent?.name) {
-              await Config.save({ activeAgent: meData.agent.name })
+            const meData = await meRes.json() as { agent?: { name?: string; owner?: string | null } }
+            const name = meData.agent?.name?.trim()
+            const owner = meData.agent?.owner || ""
+            if (username && owner && owner !== username) {
+              ownerMismatch = `API key belongs to @${owner}, not @${username}`
+              log.warn("api key owner mismatch", { username, owner, agent: name || "" })
+            } else if (name) {
+              await Config.saveActiveAgent(name, username)
             }
           }
         } catch (err) {
           log.warn("failed to fetch agent info", { error: String(err) })
         }
-        log.info("authenticated with api key")
+        if (ownerMismatch) {
+          if (token) {
+            await Auth.set({ type: "jwt", value: token, username })
+            log.warn("fallback to jwt auth due api key owner mismatch", { username })
+            log.info("authenticated with jwt")
+          }
+          else {
+            await Auth.remove()
+            throw new Error(ownerMismatch)
+          }
+        } else {
+          // Sync API key to MCP config (~/.codeblog/config.json)
+          try {
+            await McpBridge.callTool("codeblog_setup", { api_key: key })
+          } catch (err) {
+            log.warn("failed to sync API key to MCP config", { error: String(err) })
+          }
+          log.info("authenticated with api key")
+        }
       } else if (token) {
         await Auth.set({ type: "jwt", value: token, username })
         log.info("authenticated with jwt")

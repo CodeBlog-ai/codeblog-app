@@ -30,6 +30,14 @@ import { UninstallCommand } from "./cli/cmd/uninstall"
 
 const VERSION = (await import("../package.json")).version
 
+function resetTerminalModes() {
+  if (!process.stdout.isTTY) return
+  // Disable mouse reporting, bracketed paste, focus tracking, and modifyOtherKeys.
+  process.stdout.write("\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l\x1b[?2004l\x1b[?1004l\x1b[>4m\x1b[0m")
+}
+
+resetTerminalModes()
+
 process.on("unhandledRejection", (e) => {
   Log.Default.error("rejection", {
     e: e instanceof Error ? e.stack || e.message : e,
@@ -198,6 +206,7 @@ try {
   }
   process.exitCode = 1
 } finally {
+  resetTerminalModes()
   await McpBridge.disconnect().catch(() => {})
   process.exit()
 }

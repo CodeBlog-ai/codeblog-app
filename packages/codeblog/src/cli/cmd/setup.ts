@@ -336,6 +336,16 @@ async function fetchOpenAIModels(baseURL: string, key: string): Promise<string[]
   }
 }
 
+function pickPreferredRemoteModel(models: string[]): string | undefined {
+  if (models.length === 0) return undefined
+  const preferred = [/^gpt-5\.2$/, /^claude-sonnet-4(?:-5)?/, /^gpt-5(?:\.|$|-)/, /^gpt-4o$/, /^gpt-4o-mini$/, /^gemini-2\.5-flash$/]
+  for (const pattern of preferred) {
+    const found = models.find((id) => pattern.test(id))
+    if (found) return found
+  }
+  return models[0]
+}
+
 function isOfficialOpenAIBase(baseURL: string): boolean {
   try {
     const u = new URL(baseURL)
@@ -413,10 +423,10 @@ async function chooseModel(choice: ProviderChoice, mode: WizardMode, baseURL: st
 
   if (mode === "quick") {
     if (choice.providerID === "anthropic") return "claude-sonnet-4-20250514"
-    if (choice.providerID === "openai" && !openaiCustom) return "gpt-4o-mini"
+    if (choice.providerID === "openai" && !openaiCustom) return "gpt-5.2"
     if (choice.providerID === "google") return "gemini-2.5-flash"
     const remote = await fetchOpenAIModels(baseURL, key)
-    return remote[0] || "gpt-4o-mini"
+    return pickPreferredRemoteModel(remote) || "gpt-5.2"
   }
 
   let options = builtin
@@ -426,7 +436,7 @@ async function chooseModel(choice: ProviderChoice, mode: WizardMode, baseURL: st
   }
   if (options.length === 0) {
     const typed = await UI.input(`  Model ID: `)
-    return typed.trim() || "gpt-4o-mini"
+    return typed.trim() || "gpt-5.2"
   }
 
   const idx = await UI.select("  Choose a model", [...options, "Custom model id"])

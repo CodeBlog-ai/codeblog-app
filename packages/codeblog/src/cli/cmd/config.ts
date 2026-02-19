@@ -18,7 +18,7 @@ export const ConfigCommand: CommandModule = {
       })
       .option("model", {
         alias: "m",
-        describe: "Set default AI model (e.g. claude-sonnet-4-20250514, gpt-4o)",
+        describe: "Set default AI model (e.g. claude-sonnet-4-20250514, gpt-5.2)",
         type: "string",
       })
       .option("url", {
@@ -119,7 +119,8 @@ export const ConfigCommand: CommandModule = {
 
       // Show current config
       const cfg = await Config.load()
-      const model = cfg.model || AIProvider.DEFAULT_MODEL
+      const { resolveModelFromConfig } = await import("../../ai/models")
+      const model = resolveModelFromConfig(cfg) || AIProvider.DEFAULT_MODEL
       const providers = cfg.providers || {}
 
       console.log("")

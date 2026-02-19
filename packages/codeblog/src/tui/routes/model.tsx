@@ -42,8 +42,11 @@ export function ModelPicker(props: { onDone: (model?: string) => void }) {
     try {
       const { AIProvider } = await import("../../ai/provider")
       const { Config } = await import("../../config")
+      const { resolveModelFromConfig } = await import("../../ai/models")
       const cfg = await Config.load()
-      setCurrent(cfg.model || AIProvider.DEFAULT_MODEL)
+      const resolved = resolveModelFromConfig(cfg) || AIProvider.DEFAULT_MODEL
+      setCurrent(resolved)
+      if (cfg.model !== resolved) await Config.save({ model: resolved })
 
       setStatus("Fetching models from API...")
       const all = await AIProvider.available()
@@ -54,7 +57,7 @@ export function ModelPicker(props: { onDone: (model?: string) => void }) {
       }))
       if (items.length > 0) {
         setModels(items)
-        const modelId = cfg.model || AIProvider.DEFAULT_MODEL
+        const modelId = resolveModelFromConfig(cfg) || AIProvider.DEFAULT_MODEL
         const curIdx = items.findIndex((m) => m.id === modelId || `${m.provider}/${m.id}` === modelId)
         if (curIdx >= 0) setIdx(curIdx)
         setStatus(`${items.length} models loaded`)

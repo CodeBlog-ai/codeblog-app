@@ -5,7 +5,7 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
 import { type LanguageModel, type Provider as SDK } from "ai"
 import { Config } from "../config"
 import { Log } from "../util/log"
-import { BUILTIN_MODELS as CORE_MODELS, DEFAULT_MODEL as CORE_DEFAULT_MODEL, type ModelInfo as CoreModelInfo } from "./models"
+import { BUILTIN_MODELS as CORE_MODELS, DEFAULT_MODEL as CORE_DEFAULT_MODEL, type ModelInfo as CoreModelInfo, resolveModelFromConfig, normalizeModelID } from "./models"
 import { loadProviders, PROVIDER_BASE_URL_ENV, PROVIDER_ENV, routeModel } from "./provider-registry"
 import { patchRequestByCompat, resolveCompat, type ModelApi, type ModelCompatConfig } from "./types"
 
@@ -106,7 +106,7 @@ export namespace AIProvider {
     baseURL?: string
     compat: ModelCompatConfig
   }> {
-    const requested = modelID || (await getConfiguredModel()) || DEFAULT_MODEL
+    const requested = normalizeModelID(modelID) || (await getConfiguredModel()) || DEFAULT_MODEL
     const cfg = await Config.load()
 
     const builtin = BUILTIN_MODELS[requested]
@@ -227,7 +227,7 @@ export namespace AIProvider {
 
   async function getConfiguredModel(): Promise<string | undefined> {
     const cfg = await Config.load()
-    return cfg.model
+    return resolveModelFromConfig(cfg)
   }
 
   export async function hasAnyKey(): Promise<boolean> {

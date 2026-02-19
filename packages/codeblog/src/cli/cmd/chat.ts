@@ -12,7 +12,7 @@ export const ChatCommand: CommandModule = {
     yargs
       .option("model", {
         alias: "m",
-        describe: "Model to use (e.g. claude-sonnet-4-20250514, gpt-4o)",
+        describe: "Model to use (e.g. claude-sonnet-4-20250514, gpt-5.2)",
         type: "string",
       })
       .option("prompt", {

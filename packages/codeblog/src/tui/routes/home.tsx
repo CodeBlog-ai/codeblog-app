@@ -60,7 +60,7 @@ export function Home(props: {
   hasAI: boolean
   aiProvider: string
   modelName: string
-  onLogin: () => Promise<void>
+  onLogin: () => Promise<{ ok: boolean; error?: string }>
   onLogout: () => void
   onAIConfigured: () => void
 }) {
@@ -141,6 +141,13 @@ export function Home(props: {
   let modelPreload: Promise<ModelOption[]> | undefined
   const keyLog = process.env.CODEBLOG_DEBUG_KEYS === "1" ? Log.create({ service: "tui-key" }) : undefined
   const toHex = (value: string) => Array.from(value).map((ch) => ch.charCodeAt(0).toString(16).padStart(2, "0")).join(" ")
+  const chars = (evt: { sequence: string; name: string; ctrl: boolean; meta: boolean }) => {
+    if (evt.ctrl || evt.meta) return ""
+    const seq = (evt.sequence || "").replace(/[\x00-\x1f\x7f]/g, "")
+    if (seq) return seq
+    if (evt.name.length === 1) return evt.name
+    return ""
+  }
 
   function tone(color: string): ChatMsg["tone"] {
     if (color === theme.colors.success) return "success"
@@ -181,8 +188,9 @@ export function Home(props: {
         setModelLoading(true)
         const { AIProvider } = await import("../../ai/provider")
         const { Config } = await import("../../config")
+        const { resolveModelFromConfig } = await import("../../ai/models")
         const cfg = await Config.load()
-        const current = cfg.model || AIProvider.DEFAULT_MODEL
+        const current = resolveModelFromConfig(cfg) || AIProvider.DEFAULT_MODEL
         const currentBuiltin = AIProvider.BUILTIN_MODELS[current]
         const currentProvider =
           cfg.default_provider ||
@@ -434,8 +442,9 @@ export function Home(props: {
       const { AIChat } = await import("../../ai/chat")
       const { AIProvider } = await import("../../ai/provider")
       const { Config } = await import("../../config")
+      const { resolveModelFromConfig } = await import("../../ai/models")
       const cfg = await Config.load()
-      const mid = cfg.model || AIProvider.DEFAULT_MODEL
+      const mid = resolveModelFromConfig(cfg) || AIProvider.DEFAULT_MODEL
       const allMsgs = [...prev, userMsg]
         .filter((m): m is ChatMsg & { role: "user" | "assistant" } => m.role === "user" || m.role === "assistant")
         .map((m) => ({ role: m.role, content: m.modelContent || m.content }))
@@ -661,6 +670,7 @@ export function Home(props: {
       (submitKey && seq.startsWith("\x1b[") && seq.endsWith("~")) ||
       (submitKey && raw.includes(";13")) ||
       (submitKey && seq.includes(";13"))
+    const print = chars(evt)
     const newlineKey =
       evt.name === "linefeed" ||
       newlineFromRaw ||
@@ -676,21 +686,15 @@ export function Home(props: {
       if (submitKey || newlineKey) { handleSubmit(); evt.preventDefault(); return }
       if (evt.name === "escape") { setAiMode(""); evt.preventDefault(); return }
       if (evt.name === "backspace") { setAiUrl((s) => s.slice(0, -1)); evt.preventDefault(); return }
-      if (evt.sequence && evt.sequence.length >= 1 && !evt.ctrl && !evt.meta) {
-        const clean = evt.sequence.replace(/[\x00-\x1f\x7f]/g, "")
-        if (clean) { setAiUrl((s) => s + clean); evt.preventDefault(); return }
-      }
-      if (evt.name === "space") { evt.preventDefault(); return }
+      if (print === " " || evt.name === "space") { evt.preventDefault(); return }
+      if (print) { setAiUrl((s) => s + print); evt.preventDefault(); return }
       return
     }
     if (aiMode() === "key") {
       if (submitKey || newlineKey) { handleSubmit(); evt.preventDefault(); return }
       if (evt.name === "escape") { setAiMode("url"); setAiKey(""); showMsg("Paste your API URL (or press Enter to skip):", theme.colors.primary); evt.preventDefault(); return }
       if (evt.name === "backspace") { setAiKey((s) => s.slice(0, -1)); evt.preventDefault(); return }
-      if (evt.sequence && evt.sequence.length >= 1 && !evt.ctrl && !evt.meta) {
-        const clean = evt.sequence.replace(/[\x00-\x1f\x7f]/g, "")
-        if (clean) { setAiKey((s) => s + clean); evt.preventDefault(); return }
-      }
+      if (print) { setAiKey((s) => s + print); evt.preventDefault(); return }
       if (evt.name === "space") { setAiKey((s) => s + " "); evt.preventDefault(); return }
       return
     }
@@ -734,15 +738,7 @@ export function Home(props: {
         evt.preventDefault()
         return
       }
-      if (evt.sequence && evt.sequence.length >= 1 && !evt.ctrl && !evt.meta) {
-        const clean = evt.sequence.replace(/[\x00-\x1f\x7f]/g, "")
-        if (clean) {
-          setModelQuery((q) => q + clean)
-          setModelIdx(0)
-          evt.preventDefault()
-          return
-        }
-      }
+      if (print) { setModelQuery((q) => q + print); setModelIdx(0); evt.preventDefault(); return }
       if (evt.name === "space") {
         setModelQuery((q) => q + " ")
         setModelIdx(0)
@@ -781,10 +777,7 @@ export function Home(props: {
     if (submitKey && !shift && !evt.ctrl && !evt.meta && !modifiedSubmitFromRaw) { handleSubmit(); evt.preventDefault(); return }
     if (newlineKey) { setInput((s) => s + "\n"); evt.preventDefault(); return }
     if (evt.name === "backspace") { setInput((s) => s.slice(0, -1)); setSelectedIdx(0); evt.preventDefault(); return }
-    if (evt.sequence && evt.sequence.length >= 1 && !evt.ctrl && !evt.meta) {
-      const clean = evt.sequence.replace(/[\x00-\x1f\x7f]/g, "")
-      if (clean) { setInput((s) => s + clean); setSelectedIdx(0); evt.preventDefault(); return }
-    }
+    if (print) { setInput((s) => s + print); setSelectedIdx(0); evt.preventDefault(); return }
     if (evt.name === "space") { setInput((s) => s + " "); evt.preventDefault(); return }
   }, { release: true })
 

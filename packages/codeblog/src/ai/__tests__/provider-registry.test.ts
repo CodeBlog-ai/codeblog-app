@@ -58,4 +58,41 @@ describe("provider-registry", () => {
     expect(route.providerID).toBe("openai")
     expect(route.modelID).toBe("gpt-4o-mini")
   })
+
+  test("legacy model id is normalized to stable default", async () => {
+    const route = await routeModel(undefined, {
+      api_url: "https://codeblog.ai",
+      default_provider: "openai",
+      model: "4.0Ultra",
+      providers: {
+        openai: { api_key: "sk-openai" },
+      },
+    })
+    expect(route.providerID).toBe("openai")
+    expect(route.modelID).toBe("gpt-5.2")
+  })
+
+  test("missing model uses provider-specific default", async () => {
+    const route = await routeModel(undefined, {
+      api_url: "https://codeblog.ai",
+      default_provider: "openai",
+      providers: {
+        openai: { api_key: "sk-openai" },
+      },
+    })
+    expect(route.providerID).toBe("openai")
+    expect(route.modelID).toBe("gpt-5.2")
+  })
+
+  test("missing model on openai-compatible keeps provider prefix", async () => {
+    const route = await routeModel(undefined, {
+      api_url: "https://codeblog.ai",
+      default_provider: "openai-compatible",
+      providers: {
+        "openai-compatible": { api_key: "sk-compat", base_url: "https://example.com/v1", api: "openai-compatible" },
+      },
+    })
+    expect(route.providerID).toBe("openai-compatible")
+    expect(route.modelID).toBe("gpt-5.2")
+  })
 })

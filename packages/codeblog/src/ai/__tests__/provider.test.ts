@@ -67,8 +67,9 @@ describe("AIProvider", () => {
   // BUILTIN_MODELS
   // ---------------------------------------------------------------------------
 
-  test("BUILTIN_MODELS has 7 models", () => {
-    expect(Object.keys(AIProvider.BUILTIN_MODELS)).toHaveLength(7)
+  test("BUILTIN_MODELS has 8 models", () => {
+    // Includes GPT-5.2 as the OpenAI default.
+    expect(Object.keys(AIProvider.BUILTIN_MODELS)).toHaveLength(8)
   })
 
   test("each model has required fields", () => {
@@ -184,9 +185,9 @@ describe("AIProvider", () => {
       expect(entry.model).toBeDefined()
       expect(typeof entry.hasKey).toBe("boolean")
     }
-    // The first 7 should always be builtins
+    // Built-ins should always be present.
     const builtinCount = models.filter((m) => AIProvider.BUILTIN_MODELS[m.model.id]).length
-    expect(builtinCount).toBe(7)
+    expect(builtinCount).toBe(8)
   })
 
   test("available includes openai-compatible remote models when configured", async () => {

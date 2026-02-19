@@ -28,6 +28,7 @@ export namespace Config {
     default_provider?: string
     default_language?: string
     activeAgent?: string
+    active_agents?: Record<string, string>
     providers?: Record<string, ProviderConfig>
     feature_flags?: FeatureFlags
   }
@@ -54,6 +55,38 @@ export namespace Config {
     const merged = { ...current, ...config }
     await writeFile(CONFIG_FILE, JSON.stringify(merged, null, 2))
     await chmod(CONFIG_FILE, 0o600).catch(() => {})
+  }
+
+  export async function getActiveAgent(username?: string) {
+    const cfg = await load()
+    if (username) return cfg.active_agents?.[username] || ""
+    return cfg.activeAgent || ""
+  }
+
+  export async function saveActiveAgent(agent: string, username?: string) {
+    if (!agent.trim()) return
+    if (!username) {
+      await save({ activeAgent: agent })
+      return
+    }
+    const cfg = await load()
+    await save({
+      active_agents: {
+        ...(cfg.active_agents || {}),
+        [username]: agent,
+      },
+    })
+  }
+
+  export async function clearActiveAgent(username?: string) {
+    if (!username) {
+      await save({ activeAgent: "", active_agents: {} })
+      return
+    }
+    const cfg = await load()
+    const map = { ...(cfg.active_agents || {}) }
+    delete map[username]
+    await save({ active_agents: map })
   }
 
   export async function url() {

@@ -75,15 +75,66 @@ function App() {
   const [aiProvider, setAiProvider] = createSignal("")
   const [modelName, setModelName] = createSignal("")
 
+  async function refreshAuth() {
+    try {
+      const { Auth } = await import("../auth")
+      const token = await Auth.get()
+      const authenticated = token !== null
+      const username = token?.username || ""
+      setLoggedIn(authenticated)
+      setUsername(username)
+      if (!authenticated) {
+        setActiveAgent("")
+        return
+      }
+      const { Config } = await import("../config")
+      const cached = await Config.getActiveAgent(username || undefined)
+      if (cached) setActiveAgent(cached)
+      if (!token?.value) {
+        if (!cached) setActiveAgent("")
+        return
+      }
+      try {
+        const base = await Config.url()
+        const res = await fetch(`${base}/api/v1/agents/me`, {
+          headers: { Authorization: `Bearer ${token.value}` },
+        })
+        if (!res.ok) {
+          if (!cached) setActiveAgent("")
+          return
+        }
+        const data = await res.json() as { agent?: { name?: string; owner?: string | null } }
+        const name = data.agent?.name?.trim()
+        const owner = data.agent?.owner || ""
+        if (username && owner && owner !== username) {
+          setActiveAgent("")
+          await Config.clearActiveAgent(username)
+          return
+        }
+        if (!name) {
+          setActiveAgent("")
+          await Config.clearActiveAgent(username || undefined)
+          return
+        }
+        setActiveAgent(name)
+        await Config.saveActiveAgent(name, username || undefined)
+      } catch {
+        if (!cached) setActiveAgent("")
+      }
+    } catch {}
+  }
+
   async function refreshAI() {
     try {
       const { AIProvider } = await import("../ai/provider")
+      const { resolveModelFromConfig } = await import("../ai/models")
       const has = await AIProvider.hasAnyKey()
       setHasAI(has)
       if (has) {
         const { Config } = await import("../config")
         const cfg = await Config.load()
-        const model = cfg.model || AIProvider.DEFAULT_MODEL
+        const model = resolveModelFromConfig(cfg) || AIProvider.DEFAULT_MODEL
+        if (cfg.model !== model) await Config.save({ model })
         setModelName(model)
         const info = AIProvider.BUILTIN_MODELS[model]
         setAiProvider(info?.providerID || model.split("/")[0] || "ai")
@@ -93,46 +144,7 @@ function App() {
 
   onMount(async () => {
     renderer.setTerminalTitle("CodeBlog")
-
-    // Check auth status
-    try {
-      const { Auth } = await import("../auth")
-      const authenticated = await Auth.authenticated()
-      setLoggedIn(authenticated)
-      if (authenticated) {
-        const token = await Auth.get()
-        if (token?.username) setUsername(token.username)
-      }
-    } catch {}
-
-    // Get active agent
-    try {
-      const { Config } = await import("../config")
-      const cfg = await Config.load()
-      if (cfg.activeAgent) {
-        setActiveAgent(cfg.activeAgent)
-      } else if (loggedIn()) {
-        // If logged in but no activeAgent cached, fetch from API
-        const { Auth } = await import("../auth")
-        const tok = await Auth.get()
-        if (tok?.type === "apikey" && tok.value) {
-          try {
-            const base = await Config.url()
-            const res = await fetch(`${base}/api/v1/agents/me`, {
-              headers: { Authorization: `Bearer ${tok.value}` },
-            })
-            if (res.ok) {
-              const data = await res.json() as { agent?: { name?: string } }
-              if (data.agent?.name) {
-                setActiveAgent(data.agent.name)
-                await Config.save({ activeAgent: data.agent.name })
-              }
-            }
-          } catch {}
-        }
-      }
-    } catch {}
-
+    await refreshAuth()
     await refreshAI()
   })
 
@@ -166,13 +178,15 @@ function App() {
               try {
                 const { OAuth } = await import("../auth/oauth")
                 await OAuth.login()
-                const { Auth } = await import("../auth")
-                setLoggedIn(true)
-                const token = await Auth.get()
-                if (token?.username) setUsername(token.username)
-              } catch {}
+                await refreshAuth()
+                return { ok: true }
+              } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err)
+                await refreshAuth()
+                return { ok: false, error: `Login failed: ${msg}` }
+              }
             }}
-            onLogout={() => { setLoggedIn(false); setUsername("") }}
+            onLogout={() => { setLoggedIn(false); setUsername(""); setActiveAgent("") }}
             onAIConfigured={refreshAI}
           />
         </Match>
