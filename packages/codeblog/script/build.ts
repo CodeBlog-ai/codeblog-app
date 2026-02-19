@@ -53,6 +53,7 @@ for (const item of targets) {
     tsconfig: "./tsconfig.json",
     plugins: [solidPlugin],
     sourcemap: "none",
+    external: ["better-sqlite3"],
     compile: {
       autoloadBunfig: false,
       autoloadDotenv: false,
