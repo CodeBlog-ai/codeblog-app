@@ -5,6 +5,7 @@ import { UI } from "./cli/ui"
 import { EOL } from "os"
 import { McpBridge } from "./mcp/client"
 import { Auth } from "./auth"
+import { checkAndAutoUpdate } from "./cli/auto-update"
 
 // Commands
 import { SetupCommand } from "./cli/cmd/setup"
@@ -160,6 +161,11 @@ const args = hideBin(process.argv)
 const hasSubcommand = args.length > 0 && !args[0]!.startsWith("-")
 const isHelp = args.includes("--help") || args.includes("-h")
 const isVersion = args.includes("--version") || args.includes("-v")
+
+// Auto-update check on startup
+if (!isHelp && !isVersion) {
+  await checkAndAutoUpdate()
+}
 
 if (!hasSubcommand && !isHelp && !isVersion) {
   await Log.init({ print: false })
