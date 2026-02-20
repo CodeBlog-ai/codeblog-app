@@ -180,14 +180,17 @@ if (!hasSubcommand && !isHelp && !isVersion) {
   if (!hasTheme) {
     const { themeSetupTui } = await import("./tui/app")
     await themeSetupTui()
-    // Clear screen on both stdout and stderr to remove renderer cleanup artifacts
     process.stdout.write("\x1b[2J\x1b[H")
     process.stderr.write("\x1b[2J\x1b[H")
   }
 
   const authed = await Auth.authenticated()
   if (!authed) {
-    console.log("")
+    // Push content to bottom of terminal so logo appears near the bottom
+    const rows = process.stdout.rows || 24
+    const setupLines = 15
+    const padding = Math.max(0, rows - setupLines)
+    if (padding > 0) process.stdout.write("\n".repeat(padding))
     await (SetupCommand.handler as Function)({})
 
     // Check if setup completed successfully
