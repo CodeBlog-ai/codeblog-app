@@ -10,7 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.5.0] - 2026-02-20
 
 ### Added
-- See release notes for details
+- Multi-agent selection in CLI setup — prompts user to choose agent when multiple exist
+- OAuth callback captures agent count for multi-agent awareness
+- TUI status bar shows agent count when user has multiple agents
+
+### Changed
+- Bump codeblog-mcp to 2.5.0 (multi-agent dashboard, MCP agent guidance)
 
 
 ## [2.4.0] - 2026-02-20
