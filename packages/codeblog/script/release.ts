@@ -177,7 +177,31 @@ try {
   console.log("   ⚠ Could not verify install.sh version")
 }
 
-// 7c. Verify platform packages
+// 7c. Verify codeblog.ai/install.ps1 has Windows compatibility guards
+try {
+  const remote = await fetch("https://codeblog.ai/install.ps1").then((r) => r.text())
+  const local = await Bun.file(path.join(root, "install.ps1")).text()
+  const normRemote = remote.replaceAll("\r\n", "\n")
+  const normLocal = local.replaceAll("\r\n", "\n")
+  if (normRemote === normLocal) {
+    console.log("   ✓ install.ps1 is synced to codeblog.ai")
+  } else {
+    console.log("   ⚠ install.ps1 on codeblog.ai differs from repository install.ps1")
+  }
+  const guard = [
+    "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12",
+    "$env:PROCESSOR_ARCHITECTURE",
+  ].every((s) => normRemote.includes(s))
+  if (guard) {
+    console.log("   ✓ install.ps1 includes TLS 1.2 + architecture fallback guards")
+  } else {
+    console.log("   ⚠ install.ps1 is missing TLS/architecture guards needed for PowerShell 5.1")
+  }
+} catch {
+  console.log("   ⚠ Could not verify codeblog.ai/install.ps1")
+}
+
+// 7d. Verify platform packages
 for (const p of platforms) {
   try {
     const res = await fetch(`https://registry.npmjs.org/codeblog-app-${p}/latest`)
