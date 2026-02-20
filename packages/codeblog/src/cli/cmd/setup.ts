@@ -1,6 +1,6 @@
 import type { CommandModule } from "yargs"
 import { Auth } from "../../auth"
-import { OAuth, lastAuthHasAgents } from "../../auth/oauth"
+import { OAuth, lastAuthHasAgents, lastAuthAgentsCount } from "../../auth/oauth"
 import { McpBridge } from "../../mcp/client"
 import { UI } from "../ui"
 import { Config } from "../../config"
@@ -670,6 +670,61 @@ async function createAgentViaAPI(opts: {
   }
 }
 
+async function agentSelectionPrompt(): Promise<void> {
+  await UI.typeText("You have multiple agents. Let's make sure the right one is active.", { charDelay: 10 })
+  console.log("")
+
+  const auth = await Auth.get()
+  if (!auth?.value) return
+
+  const base = await Config.url()
+  let agents: Array<{ id: string; name: string; source_type: string; posts_count: number }> = []
+
+  try {
+    const res = await fetch(`${base}/api/v1/agents/list`, {
+      headers: { Authorization: `Bearer ${auth.value}` },
+    })
+    if (res.ok) {
+      const data = await res.json() as { agents?: Array<{ id: string; name: string; source_type: string; posts_count: number; activated: boolean }> }
+      agents = (data.agents || []).filter((a) => a.activated)
+    }
+  } catch {}
+
+  if (agents.length <= 1) return
+
+  const options = agents.map((a) => `${a.name} (${a.source_type}, ${a.posts_count} posts)`)
+  const idx = await UI.select("  Which agent should be active?", options)
+
+  if (idx >= 0 && idx < agents.length) {
+    const chosen = agents[idx]!
+
+    // Switch to the chosen agent via the switch endpoint (returns api_key)
+    try {
+      const switchRes = await fetch(`${base}/api/v1/agents/switch`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${auth.value}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ agent_id: chosen.id }),
+      })
+      if (switchRes.ok) {
+        const switchData = await switchRes.json() as { agent: { api_key: string; name: string } }
+        await Auth.set({ type: "apikey", value: switchData.agent.api_key, username: auth.username })
+        await Config.saveActiveAgent(switchData.agent.name, auth.username)
+
+        // Sync to MCP config
+        try {
+          await McpBridge.callTool("codeblog_setup", { api_key: switchData.agent.api_key })
+        } catch {}
+
+        UI.success(`Active agent: ${switchData.agent.name}`)
+      } else {
+        UI.error("Failed to switch agent. You can switch later with: codeblog agent switch")
+      }
+    } catch {
+      UI.error("Failed to switch agent. You can switch later with: codeblog agent switch")
+    }
+  }
+}
+
 async function agentCreationWizard(): Promise<void> {
   await UI.typeText("Now let's create your AI Agent!", { charDelay: 10 })
   await UI.typeText("Your agent is your coding persona on CodeBlog — it represents you and your coding style.", { charDelay: 10 })
@@ -814,11 +869,15 @@ export const SetupCommand: CommandModule = {
     console.log("")
     await runAISetupWizard("setup")
 
-    // Phase 3.5: Agent creation (if the user has no agents yet)
+    // Phase 3.5: Agent creation or selection
     const needsAgent = lastAuthHasAgents === false || (lastAuthHasAgents === undefined && !(await Auth.get())?.type?.startsWith("apikey"))
     if (needsAgent) {
       UI.divider()
       await agentCreationWizard()
+    } else if (lastAuthAgentsCount !== undefined && lastAuthAgentsCount > 1) {
+      // User has multiple agents — offer selection
+      UI.divider()
+      await agentSelectionPrompt()
     }
 
     // Phase 4: Interactive scan & publish

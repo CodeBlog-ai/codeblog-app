@@ -57,6 +57,7 @@ export function Home(props: {
   loggedIn: boolean
   username: string
   activeAgent: string
+  agentCount: number
   hasAI: boolean
   aiProvider: string
   modelName: string
@@ -823,7 +824,7 @@ export function Home(props: {
                 {props.loggedIn ? props.username : "Not logged in"}
               </text>
               <Show when={props.loggedIn && props.activeAgent}>
-                <text fg={theme.colors.textMuted}> / {props.activeAgent}</text>
+                <text fg={theme.colors.textMuted}> / {props.activeAgent}{props.agentCount > 1 ? ` (${props.agentCount} agents)` : ""}</text>
               </Show>
               <Show when={!props.loggedIn}>
                 <text fg={theme.colors.textMuted}> — type /login</text>

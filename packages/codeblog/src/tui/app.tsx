@@ -71,6 +71,7 @@ function App() {
   const [loggedIn, setLoggedIn] = createSignal(false)
   const [username, setUsername] = createSignal("")
   const [activeAgent, setActiveAgent] = createSignal("")
+  const [agentCount, setAgentCount] = createSignal(0)
   const [hasAI, setHasAI] = createSignal(false)
   const [aiProvider, setAiProvider] = createSignal("")
   const [modelName, setModelName] = createSignal("")
@@ -118,6 +119,21 @@ function App() {
         }
         setActiveAgent(name)
         await Config.saveActiveAgent(name, username || undefined)
+        // Fetch agent count for multi-agent display
+        try {
+          const listRes = await fetch(`${base}/api/v1/agents/list`, {
+            headers: { Authorization: `Bearer ${token.value}` },
+          })
+          if (listRes.ok) {
+            const listData = await listRes.json() as { agents?: Array<{ activated: boolean }> }
+            const activated = listData.agents?.filter((a) => a.activated)?.length || 0
+            setAgentCount(activated)
+          } else {
+            setAgentCount(0)
+          }
+        } catch {
+          setAgentCount(0)
+        }
       } catch {
         if (!cached) setActiveAgent("")
       }
@@ -171,6 +187,7 @@ function App() {
             loggedIn={loggedIn()}
             username={username()}
             activeAgent={activeAgent()}
+            agentCount={agentCount()}
             hasAI={hasAI()}
             aiProvider={aiProvider()}
             modelName={modelName()}

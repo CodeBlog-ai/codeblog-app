@@ -8,6 +8,8 @@ const log = Log.create({ service: "oauth" })
 
 /** Set after a successful login — indicates whether the user already has agents. */
 export let lastAuthHasAgents: boolean | undefined = undefined
+/** Set after a successful login — number of agents the user has. */
+export let lastAuthAgentsCount: number | undefined = undefined
 
 export namespace OAuth {
   export async function login(options?: { onUrl?: (url: string) => void }) {
@@ -20,6 +22,8 @@ export namespace OAuth {
       const username = params.get("username") || undefined
       const hasAgentsParam = params.get("has_agents")
       lastAuthHasAgents = hasAgentsParam === "true" ? true : hasAgentsParam === "false" ? false : undefined
+      const agentsCountParam = params.get("agents_count")
+      lastAuthAgentsCount = agentsCountParam ? parseInt(agentsCountParam, 10) : undefined
 
       if (key) {
         let ownerMismatch = ""
