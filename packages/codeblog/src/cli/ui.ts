@@ -200,7 +200,7 @@ export namespace UI {
     })
   }
 
-  export async function select(prompt: string, options: string[]): Promise<number> {
+  export async function select(prompt: string, options: string[], opts?: { searchable?: boolean }): Promise<number> {
     if (options.length === 0) return 0
 
     const stdin = process.stdin
@@ -209,8 +209,11 @@ export namespace UI {
     process.stderr.write("\x1b[?25l")
 
     let idx = 0
+    let filter = ""
+    let filtered = options.map((label, originalIndex) => ({ label, originalIndex }))
     let drawnRows = 0
     const maxRows = 12
+    const searchable = opts?.searchable !== false
     let onData: ((ch: Buffer) => void) = () => {}
 
     const stripAnsi = (text: string) => text.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "").replace(/\x1b./g, "")
@@ -220,24 +223,42 @@ export namespace UI {
       return Math.max(1, Math.ceil((len || 1) / cols))
     }
 
+    const applyFilter = () => {
+      const q = filter.toLowerCase()
+      if (!q) {
+        filtered = options.map((label, originalIndex) => ({ label, originalIndex }))
+      } else {
+        filtered = options
+          .map((label, originalIndex) => ({ label, originalIndex }))
+          .filter(({ label }) => stripAnsi(label).toLowerCase().includes(q))
+      }
+      idx = 0
+    }
+
     const draw = () => {
       if (drawnRows > 1) process.stderr.write(`\x1b[${drawnRows - 1}F`)
       process.stderr.write("\x1b[J")
 
-      const start = options.length <= maxRows ? 0 : Math.max(0, Math.min(idx - 4, options.length - maxRows))
-      const items = options.slice(start, start + maxRows)
+      const count = filtered.length
+      const start = count <= maxRows ? 0 : Math.max(0, Math.min(idx - 4, count - maxRows))
+      const items = filtered.slice(start, start + maxRows)
+      const searchLine = filter
+        ? `  ${Style.TEXT_HIGHLIGHT}❯${Style.TEXT_NORMAL} ${filter}${Style.TEXT_DIM}█${Style.TEXT_NORMAL}`
+        : `  ${Style.TEXT_HIGHLIGHT}❯${Style.TEXT_NORMAL} ${Style.TEXT_DIM}type to search...${Style.TEXT_NORMAL}`
       const lines = [
         prompt,
+        ...(searchable ? [searchLine] : []),
         ...items.map((item, i) => {
           const active = start + i === idx
           const marker = active ? `${Style.TEXT_HIGHLIGHT}●${Style.TEXT_NORMAL}` : "○"
-          const text = active ? `${Style.TEXT_NORMAL_BOLD}${item}${Style.TEXT_NORMAL}` : item
+          const text = active ? `${Style.TEXT_NORMAL_BOLD}${item.label}${Style.TEXT_NORMAL}` : item.label
           return `  ${marker} ${text}`
         }),
-        options.length > maxRows
-          ? `  ${Style.TEXT_DIM}${start > 0 ? "↑ more  " : ""}${start + maxRows < options.length ? "↓ more" : ""}${Style.TEXT_NORMAL}`
+        ...(count === 0 ? [`  ${Style.TEXT_DIM}No matches${Style.TEXT_NORMAL}`] : []),
+        count > maxRows
+          ? `  ${Style.TEXT_DIM}${start > 0 ? "↑ more  " : ""}${start + maxRows < count ? "↓ more" : ""}${Style.TEXT_NORMAL}`
           : `  ${Style.TEXT_DIM}${Style.TEXT_NORMAL}`,
-        `  ${Style.TEXT_DIM}Use ↑/↓ then Enter (Esc to cancel)${Style.TEXT_NORMAL}`,
+        `  ${Style.TEXT_DIM}↑/↓ select · Enter confirm · Esc ${filter ? "clear" : "cancel"}${Style.TEXT_NORMAL}`,
       ]
       process.stderr.write(lines.map((line) => `\x1b[2K\r${line}`).join("\n"))
       drawnRows = lines.reduce((sum, line) => sum + rowCount(line), 0)
@@ -260,24 +281,56 @@ export namespace UI {
           process.exit(130)
         }
         if (c === "\r" || c === "\n") {
-          restore()
-          resolve(idx)
+          if (filtered.length > 0) {
+            restore()
+            resolve(filtered[idx]!.originalIndex)
+          }
           return
         }
         if (c === "\x1b") {
-          restore()
-          resolve(-1)
+          if (searchable && filter) {
+            filter = ""
+            applyFilter()
+            draw()
+          } else {
+            restore()
+            resolve(-1)
+          }
           return
         }
-        if (c === "k" || c.includes("\x1b[A") || c.includes("\x1bOA")) {
-          idx = (idx - 1 + options.length) % options.length
+        if (c === "\x7f" || c === "\b") {
+          if (searchable && filter) {
+            filter = filter.slice(0, -1)
+            applyFilter()
+            draw()
+          }
+          return
+        }
+        if (c.includes("\x1b[A") || c.includes("\x1bOA")) {
+          if (filtered.length > 0) idx = (idx - 1 + filtered.length) % filtered.length
           draw()
           return
         }
-        if (c === "j" || c.includes("\x1b[B") || c.includes("\x1bOB")) {
-          idx = (idx + 1) % options.length
+        if (c.includes("\x1b[B") || c.includes("\x1bOB")) {
+          if (filtered.length > 0) idx = (idx + 1) % filtered.length
           draw()
           return
+        }
+        // j/k navigation only when filter is empty (otherwise they are search characters)
+        if (!filter && (c === "k" || c === "j")) {
+          if (c === "k") idx = (idx - 1 + filtered.length) % filtered.length
+          else idx = (idx + 1) % filtered.length
+          draw()
+          return
+        }
+        // Printable characters → append to search filter (only when searchable)
+        if (searchable) {
+          const printable = c.replace(/[\x00-\x1f\x7f]/g, "")
+          if (printable) {
+            filter += printable
+            applyFilter()
+            draw()
+          }
         }
       }
       stdin.on("data", onData)

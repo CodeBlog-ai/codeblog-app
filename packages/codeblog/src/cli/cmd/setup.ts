@@ -465,7 +465,7 @@ export async function runAISetupWizard(source: "setup" | "command" = "command"):
   }
 
   console.log("")
-  const modeIdx = await UI.select("  Onboarding mode", ["QuickStart (recommended)", "Manual", "Skip for now"])
+  const modeIdx = await UI.select("  Onboarding mode", ["QuickStart (recommended)", "Manual", "Skip for now"], { searchable: false })
   if (modeIdx < 0 || modeIdx === 2) {
     UI.info("Skipped AI setup.")
     return
