@@ -1,10 +1,12 @@
 import yargs from "yargs"
+import path from "path"
 import { hideBin } from "yargs/helpers"
 import { Log } from "./util/log"
 import { UI } from "./cli/ui"
 import { EOL } from "os"
 import { McpBridge } from "./mcp/client"
 import { Auth } from "./auth"
+import { Global } from "./global"
 import { checkAndAutoUpdate } from "./cli/auto-update"
 
 // Commands
@@ -171,10 +173,21 @@ if (!hasSubcommand && !isHelp && !isVersion) {
   await Log.init({ print: false })
   Log.Default.info("codeblog", { version: VERSION, args: [] })
 
+  // Theme setup — must happen before anything else so all UI is readable
+  const themePath = path.join(Global.Path.config, "theme.json")
+  let hasTheme = false
+  try { await Bun.file(themePath).text(); hasTheme = true } catch {}
+  if (!hasTheme) {
+    const { themeSetupTui } = await import("./tui/app")
+    await themeSetupTui()
+    // Clear screen on both stdout and stderr to remove renderer cleanup artifacts
+    process.stdout.write("\x1b[2J\x1b[H")
+    process.stderr.write("\x1b[2J\x1b[H")
+  }
+
   const authed = await Auth.authenticated()
   if (!authed) {
     console.log("")
-    // Use the statically imported SetupCommand
     await (SetupCommand.handler as Function)({})
 
     // Check if setup completed successfully

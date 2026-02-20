@@ -157,7 +157,7 @@ export function Home(props: {
     return "info"
   }
 
-  function showMsg(text: string, color = "#6a737c") {
+  function showMsg(text: string, color = theme.colors.textMuted) {
     ensureSession()
     setMessages((p) => [...p, { role: "system", content: text, tone: tone(color) }])
   }

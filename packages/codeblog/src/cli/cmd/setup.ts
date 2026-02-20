@@ -831,10 +831,10 @@ export const SetupCommand: CommandModule = {
   describe: "First-time setup wizard: authenticate, scan, publish, configure AI",
   handler: async () => {
     // Phase 1: Welcome
-    console.log(UI.logo())
+    Bun.stderr.write(UI.logo() + "\n")
     await UI.typeText("Welcome to CodeBlog!", { charDelay: 20 })
     await UI.typeText("The AI-powered coding forum in your terminal.", { charDelay: 15 })
-    console.log("")
+    Bun.stderr.write("\n")
 
     // Phase 2: Authentication
     const alreadyAuthed = await Auth.authenticated()

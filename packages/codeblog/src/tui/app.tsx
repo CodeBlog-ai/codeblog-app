@@ -4,7 +4,7 @@ import { RouteProvider, useRoute } from "./context/route"
 import { ExitProvider, useExit } from "./context/exit"
 import { ThemeProvider, useTheme } from "./context/theme"
 import { Home } from "./routes/home"
-import { ThemePicker } from "./routes/setup"
+import { ThemeSetup, ThemePicker } from "./routes/setup"
 import { ModelPicker } from "./routes/model"
 import { Post } from "./routes/post"
 import { Search } from "./routes/search"
@@ -15,14 +15,77 @@ import { emitInputIntent, isShiftEnterSequence } from "./input-intent"
 import pkg from "../../package.json"
 const VERSION = pkg.version
 
+const RENDER_OPTS = {
+  targetFps: 30,
+  exitOnCtrlC: false,
+  autoFocus: false,
+  openConsoleOnError: false,
+  useKittyKeyboard: {
+    disambiguate: true,
+    alternateKeys: true,
+    events: true,
+    allKeysAsEscapes: true,
+    reportText: true,
+  },
+  prependInputHandlers: [
+    (sequence: string) => {
+      if (!isShiftEnterSequence(sequence)) return false
+      emitInputIntent("newline")
+      return true
+    },
+  ],
+}
+
 function enableModifyOtherKeys() {
   if (!process.stdout.isTTY) return () => {}
-  // Ask xterm-compatible terminals to include modifier info for keys like Enter.
   process.stdout.write("\x1b[>4;2m")
   return () => {
-    // Disable modifyOtherKeys on exit.
     process.stdout.write("\x1b[>4m")
   }
+}
+
+/**
+ * Standalone theme setup TUI — runs before the main app for first-time users.
+ * Renders ThemeSetup full-screen, then destroys itself when done.
+ */
+export function themeSetupTui() {
+  return new Promise<void>((resolve) => {
+    const restoreModifiers = enableModifyOtherKeys()
+
+    function ThemeSetupApp() {
+      const renderer = useRenderer()
+      const dimensions = useTerminalDimensions()
+
+      useKeyboard((evt) => {
+        if (evt.ctrl && evt.name === "c") {
+          renderer.setTerminalTitle("")
+          renderer.destroy()
+          restoreModifiers()
+          process.exit(0)
+        }
+      })
+
+      return (
+        <box flexDirection="column" width={dimensions().width} height={dimensions().height}>
+          <ThemeSetup onDone={() => {
+            renderer.setTerminalTitle("")
+            renderer.destroy()
+            restoreModifiers()
+            resolve()
+          }} />
+        </box>
+      )
+    }
+
+    render(
+      () => (
+        <ThemeProvider>
+          <ThemeSetupApp />
+        </ThemeProvider>
+      ),
+      RENDER_OPTS,
+    )
+  })
 }
 
 export function tui(input: { onExit?: () => Promise<void> }) {
@@ -38,26 +101,7 @@ export function tui(input: { onExit?: () => Promise<void> }) {
           </ThemeProvider>
         </ExitProvider>
       ),
-      {
-        targetFps: 30,
-        exitOnCtrlC: false,
-        autoFocus: false,
-        openConsoleOnError: false,
-        useKittyKeyboard: {
-          disambiguate: true,
-          alternateKeys: true,
-          events: true,
-          allKeysAsEscapes: true,
-          reportText: true,
-        },
-        prependInputHandlers: [
-          (sequence) => {
-            if (!isShiftEnterSequence(sequence)) return false
-            emitInputIntent("newline")
-            return true
-          },
-        ],
-      },
+      RENDER_OPTS,
     )
   })
 }
@@ -181,61 +225,63 @@ function App() {
 
   return (
     <box flexDirection="column" width={dimensions().width} height={dimensions().height}>
-      <Switch>
-        <Match when={route.data.type === "home"}>
-          <Home
-            loggedIn={loggedIn()}
-            username={username()}
-            activeAgent={activeAgent()}
-            agentCount={agentCount()}
-            hasAI={hasAI()}
-            aiProvider={aiProvider()}
-            modelName={modelName()}
-            onLogin={async () => {
-              try {
-                const { OAuth } = await import("../auth/oauth")
-                await OAuth.login()
-                await refreshAuth()
-                return { ok: true }
-              } catch (err) {
-                const msg = err instanceof Error ? err.message : String(err)
-                await refreshAuth()
-                return { ok: false, error: `Login failed: ${msg}` }
-              }
-            }}
-            onLogout={() => { setLoggedIn(false); setUsername(""); setActiveAgent("") }}
-            onAIConfigured={refreshAI}
-          />
-        </Match>
-        <Match when={route.data.type === "theme"}>
-          <ThemePicker onDone={() => route.navigate({ type: "home" })} />
-        </Match>
-        <Match when={route.data.type === "model"}>
-          <ModelPicker onDone={async (model) => {
-            if (model) setModelName(model)
-            await refreshAI()
-            route.navigate({ type: "home" })
-          }} />
-        </Match>
-        <Match when={route.data.type === "post"}>
-          <Post />
-        </Match>
-        <Match when={route.data.type === "search"}>
-          <Search />
-        </Match>
-        <Match when={route.data.type === "trending"}>
-          <Trending />
-        </Match>
-        <Match when={route.data.type === "notifications"}>
-          <Notifications />
-        </Match>
-      </Switch>
+      <Show when={!theme.needsSetup} fallback={<ThemeSetup />}>
+        <Switch>
+          <Match when={route.data.type === "home"}>
+            <Home
+              loggedIn={loggedIn()}
+              username={username()}
+              activeAgent={activeAgent()}
+              agentCount={agentCount()}
+              hasAI={hasAI()}
+              aiProvider={aiProvider()}
+              modelName={modelName()}
+              onLogin={async () => {
+                try {
+                  const { OAuth } = await import("../auth/oauth")
+                  await OAuth.login()
+                  await refreshAuth()
+                  return { ok: true }
+                } catch (err) {
+                  const msg = err instanceof Error ? err.message : String(err)
+                  await refreshAuth()
+                  return { ok: false, error: `Login failed: ${msg}` }
+                }
+              }}
+              onLogout={() => { setLoggedIn(false); setUsername(""); setActiveAgent("") }}
+              onAIConfigured={refreshAI}
+            />
+          </Match>
+          <Match when={route.data.type === "theme"}>
+            <ThemePicker onDone={() => route.navigate({ type: "home" })} />
+          </Match>
+          <Match when={route.data.type === "model"}>
+            <ModelPicker onDone={async (model) => {
+              if (model) setModelName(model)
+              await refreshAI()
+              route.navigate({ type: "home" })
+            }} />
+          </Match>
+          <Match when={route.data.type === "post"}>
+            <Post />
+          </Match>
+          <Match when={route.data.type === "search"}>
+            <Search />
+          </Match>
+          <Match when={route.data.type === "trending"}>
+            <Trending />
+          </Match>
+          <Match when={route.data.type === "notifications"}>
+            <Notifications />
+          </Match>
+        </Switch>
 
-      {/* Status bar — only version */}
-      <box paddingLeft={2} paddingRight={2} flexShrink={0} flexDirection="row" gap={2}>
-        <box flexGrow={1} />
-        <text fg={theme.colors.textMuted}>v{VERSION}</text>
-      </box>
+        {/* Status bar — only version */}
+        <box paddingLeft={2} paddingRight={2} flexShrink={0} flexDirection="row" gap={2}>
+          <box flexGrow={1} />
+          <text fg={theme.colors.textMuted}>v{VERSION}</text>
+        </box>
+      </Show>
     </box>
   )
 }
