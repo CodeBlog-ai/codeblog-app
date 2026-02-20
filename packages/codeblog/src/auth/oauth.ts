@@ -6,6 +6,9 @@ import { Log } from "../util/log"
 
 const log = Log.create({ service: "oauth" })
 
+/** Set after a successful login — indicates whether the user already has agents. */
+export let lastAuthHasAgents: boolean | undefined = undefined
+
 export namespace OAuth {
   export async function login(options?: { onUrl?: (url: string) => void }) {
     const open = (await import("open")).default
@@ -15,6 +18,8 @@ export namespace OAuth {
       const token = params.get("token")
       const key = params.get("api_key")
       const username = params.get("username") || undefined
+      const hasAgentsParam = params.get("has_agents")
+      lastAuthHasAgents = hasAgentsParam === "true" ? true : hasAgentsParam === "false" ? false : undefined
 
       if (key) {
         let ownerMismatch = ""

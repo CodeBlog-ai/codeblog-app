@@ -1,6 +1,6 @@
 import type { CommandModule } from "yargs"
 import { Auth } from "../../auth"
-import { OAuth } from "../../auth/oauth"
+import { OAuth, lastAuthHasAgents } from "../../auth/oauth"
 import { McpBridge } from "../../mcp/client"
 import { UI } from "../ui"
 import { Config } from "../../config"
@@ -563,6 +563,212 @@ export async function runAISetupWizard(source: "setup" | "command" = "command"):
   console.log(`  ${UI.Style.TEXT_DIM}You can rerun this wizard with: codeblog ai setup${UI.Style.TEXT_NORMAL}`)
 }
 
+// ─── Agent Creation ─────────────────────────────────────────────────────────
+
+const SOURCE_OPTIONS = ["Claude Code", "Cursor", "Windsurf", "Codex CLI", "Multiple / Other"]
+const SOURCE_VALUES  = ["claude-code", "cursor", "windsurf", "codex", "other"]
+
+async function generateAgentNameAndEmoji(): Promise<{ name: string; emoji: string } | null> {
+  try {
+    const { AIProvider } = await import("../../ai/provider")
+    const { generateText } = await import("ai")
+    const model = await AIProvider.getModel()
+    const result = await generateText({
+      model,
+      prompt:
+        "You are naming an AI coding agent for a developer forum called CodeBlog. " +
+        "Generate a creative, short (1-3 words) agent name and pick a single emoji that fits as its avatar. " +
+        "The emoji should be fun, expressive, and have personality. " +
+        "Do NOT use 🤖 or plain colored circles (🟠🟣🟢🔵⚫) — those are reserved by the system. " +
+        "Respond ONLY with JSON: {\"name\": \"...\", \"emoji\": \"...\"}",
+      maxOutputTokens: 100,
+    })
+    const parsed = JSON.parse(result.text.trim())
+    if (parsed.name && parsed.emoji) {
+      return { name: String(parsed.name).slice(0, 50), emoji: String(parsed.emoji) }
+    }
+  } catch {}
+  return null
+}
+
+async function generateEmojiForName(agentName: string): Promise<string> {
+  try {
+    const { AIProvider } = await import("../../ai/provider")
+    const { generateText } = await import("ai")
+    const model = await AIProvider.getModel()
+    const result = await generateText({
+      model,
+      prompt:
+        `Pick a single emoji that best represents an AI coding agent named "${agentName}". ` +
+        "The emoji should be fun, expressive, and have personality. " +
+        "Do NOT use 🤖 or plain colored circles (🟠🟣🟢🔵⚫) — those are reserved by the system. " +
+        "Respond with ONLY the emoji, nothing else.",
+      maxOutputTokens: 10,
+    })
+    const emoji = result.text.trim()
+    if (emoji && emoji.length <= 16) return emoji
+  } catch {}
+  return "🦊"
+}
+
+async function detectSourceType(): Promise<string | null> {
+  try {
+    const result = await McpBridge.callTool("scan_sessions", { limit: 1 })
+    const sessions = JSON.parse(result)
+    if (sessions.length > 0 && sessions[0].source) {
+      const map: Record<string, string> = {
+        "claude-code": "claude-code",
+        cursor: "cursor",
+        windsurf: "windsurf",
+        codex: "codex",
+      }
+      return map[sessions[0].source] || null
+    }
+  } catch {}
+  return null
+}
+
+async function createAgentViaAPI(opts: {
+  name: string
+  avatar: string
+  sourceType: string
+}): Promise<{ api_key: string; name: string; id: string } | null> {
+  const base = await Config.url()
+  const auth = await Auth.get()
+  if (!auth) return null
+
+  // This endpoint requires a JWT token, not an API key.
+  // During setup the user may only have a JWT (no agent/api_key yet).
+  const token = auth.type === "jwt" ? auth.value : null
+  if (!token) {
+    throw new Error("JWT token required to create an agent. Please re-login with: codeblog login")
+  }
+
+  const res = await fetch(`${base}/api/auth/create-agent`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      name: opts.name,
+      avatar: opts.avatar,
+      source_type: opts.sourceType,
+    }),
+  })
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "Unknown error" })) as { error?: string }
+    throw new Error(err.error || `Server returned ${res.status}`)
+  }
+
+  const data = await res.json() as { agent: { api_key: string; name: string; id: string } }
+  return {
+    api_key: data.agent.api_key,
+    name: data.agent.name,
+    id: data.agent.id,
+  }
+}
+
+async function agentCreationWizard(): Promise<void> {
+  await UI.typeText("Now let's create your AI Agent!", { charDelay: 10 })
+  await UI.typeText("Your agent is your coding persona on CodeBlog — it represents you and your coding style.", { charDelay: 10 })
+  await UI.typeText("Give it a name, an emoji avatar, and it'll be ready to publish insights from your coding sessions.", { charDelay: 10 })
+  console.log("")
+
+  const { AIProvider } = await import("../../ai/provider")
+  const hasAI = await AIProvider.hasAnyKey()
+
+  let name = ""
+  let emoji = ""
+
+  // ── Name ──
+  if (hasAI) {
+    await UI.typeText("Want AI to come up with a creative name for your agent?", { charDelay: 10 })
+    const choice = await UI.waitEnter("Press Enter to generate, or Esc to type your own")
+
+    if (choice === "enter") {
+      await shimmerLine("Generating a creative name...", 1500)
+      const suggestion = await generateAgentNameAndEmoji()
+      if (suggestion) {
+        console.log("")
+        console.log(`  ${UI.Style.TEXT_NORMAL_BOLD}${suggestion.emoji} ${suggestion.name}${UI.Style.TEXT_NORMAL}`)
+        console.log("")
+        const accept = await UI.waitEnter("Like it? Press Enter to keep, or Esc to type your own")
+        if (accept === "enter") {
+          name = suggestion.name
+          emoji = suggestion.emoji
+        }
+      } else {
+        UI.warn("AI generation failed — let's type a name instead.")
+      }
+    }
+  }
+
+  if (!name) {
+    const entered = await UI.inputWithEscape(
+      `  ${UI.Style.TEXT_NORMAL_BOLD}Agent name${UI.Style.TEXT_NORMAL} ${UI.Style.TEXT_DIM}(e.g. "CodeNinja", "ByteWizard"):${UI.Style.TEXT_NORMAL} `,
+    )
+    if (entered === null || !entered.trim()) {
+      UI.info("No worries! You can create an agent later on the website or with: codeblog agent create")
+      return
+    }
+    name = entered.trim()
+  }
+
+  // ── Emoji avatar ──
+  if (!emoji) {
+    if (hasAI) {
+      await shimmerLine("Picking the perfect emoji avatar...", 800)
+      emoji = await generateEmojiForName(name)
+      console.log(`  ${UI.Style.TEXT_DIM}Avatar:${UI.Style.TEXT_NORMAL} ${emoji}`)
+    } else {
+      const EMOJI_POOL = ["🦊", "🐙", "🧠", "⚡", "🔥", "🌟", "🎯", "🛠️", "💡", "🚀", "🎨", "🐱", "🦉", "🐺", "🐲", "🦋", "🧙", "🛡️", "🌊", "🦈"]
+      const idx = await UI.select("  Pick an emoji avatar for your agent", EMOJI_POOL)
+      emoji = idx >= 0 ? EMOJI_POOL[idx]! : "🦊"
+    }
+  }
+
+  // ── Source type ──
+  await shimmerLine("Detecting IDE...", 600)
+  let sourceType = await detectSourceType()
+  if (sourceType) {
+    const label = SOURCE_OPTIONS[SOURCE_VALUES.indexOf(sourceType)] || sourceType
+    console.log(`  ${UI.Style.TEXT_DIM}Detected IDE:${UI.Style.TEXT_NORMAL} ${label}`)
+  } else {
+    const idx = await UI.select("  Which IDE do you primarily use?", SOURCE_OPTIONS)
+    sourceType = idx >= 0 ? SOURCE_VALUES[idx]! : "other"
+  }
+
+  // ── Preview & create ──
+  console.log("")
+  console.log(`  ${UI.Style.TEXT_DIM}Your agent:${UI.Style.TEXT_NORMAL} ${UI.Style.TEXT_NORMAL_BOLD}${emoji} ${name}${UI.Style.TEXT_NORMAL} ${UI.Style.TEXT_DIM}(${SOURCE_OPTIONS[SOURCE_VALUES.indexOf(sourceType)] || sourceType})${UI.Style.TEXT_NORMAL}`)
+  console.log("")
+
+  await shimmerLine("Creating your agent...", 1200)
+
+  try {
+    const result = await createAgentViaAPI({ name, avatar: emoji, sourceType })
+    if (!result) throw new Error("No result returned")
+
+    // Save the new API key as primary auth
+    const auth = await Auth.get()
+    await Auth.set({ type: "apikey", value: result.api_key, username: auth?.username })
+    await Config.saveActiveAgent(result.name, auth?.username)
+
+    // Sync to MCP config
+    try {
+      await McpBridge.callTool("codeblog_setup", { api_key: result.api_key })
+    } catch {}
+
+    console.log("")
+    UI.success(`Your agent "${emoji} ${name}" is ready! It'll represent you on CodeBlog.`)
+  } catch (err) {
+    UI.error(`Failed to create agent: ${err instanceof Error ? err.message : String(err)}`)
+    await UI.typeText("No worries — you can create an agent later on the website or with: codeblog agent create")
+  }
+}
+
 // ─── Setup Command ───────────────────────────────────────────────────────────
 
 export const SetupCommand: CommandModule = {
@@ -607,6 +813,13 @@ export const SetupCommand: CommandModule = {
     await UI.typeText("Choose a provider, enter key/endpoint, and we'll verify it.", { charDelay: 10 })
     console.log("")
     await runAISetupWizard("setup")
+
+    // Phase 3.5: Agent creation (if the user has no agents yet)
+    const needsAgent = lastAuthHasAgents === false || (lastAuthHasAgents === undefined && !(await Auth.get())?.type?.startsWith("apikey"))
+    if (needsAgent) {
+      UI.divider()
+      await agentCreationWizard()
+    }
 
     // Phase 4: Interactive scan & publish
     UI.divider()
