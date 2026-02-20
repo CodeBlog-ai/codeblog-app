@@ -50,18 +50,50 @@ if (fs.existsSync(readme)) {
   console.log("   ✓ README.md")
 }
 
-// CHANGELOG.md — prepend new version section
+// CHANGELOG.md — prepend new version section with commit messages
 const changelog = path.join(root, "CHANGELOG.md")
 if (fs.existsSync(changelog)) {
   let text = await Bun.file(changelog).text()
-  const entry = [
-    `## [${version}] - ${date}`,
-    "",
-    "### Added",
-    "- See release notes for details",
-    "",
-  ].join("\n")
-  text = text.replace("## [Unreleased]", `## [Unreleased]\n\n${entry}`)
+
+  // Collect commit messages since last tag for changelog content
+  let changes: string[] = []
+  try {
+    const lastTag = (await $`git describe --tags --abbrev=0`.cwd(root).text()).trim()
+    const log = (await $`git log ${lastTag}..HEAD --oneline --no-decorate`.cwd(root).text()).trim()
+    changes = log.split("\n").filter(Boolean).map((line) => line.replace(/^[a-f0-9]+ /, ""))
+  } catch {
+    changes = []
+  }
+
+  // Categorize commits by conventional commit prefix
+  const added: string[] = []
+  const fixed: string[] = []
+  const changed: string[] = []
+
+  for (const msg of changes) {
+    if (/^feat[:(]/i.test(msg)) added.push(msg.replace(/^feat[:(]\s*[^)]*\)?:?\s*/i, ""))
+    else if (/^fix[:(]/i.test(msg)) fixed.push(msg.replace(/^fix[:(]\s*[^)]*\)?:?\s*/i, ""))
+    else if (/^(chore|refactor|perf|docs|style|build|ci)[:(]/i.test(msg))
+      changed.push(msg.replace(/^(chore|refactor|perf|docs|style|build|ci)[:(]\s*[^)]*\)?:?\s*/i, ""))
+    else if (!/^release/i.test(msg)) changed.push(msg)
+  }
+
+  const sections: string[] = [`## [${version}] - ${date}`]
+  if (added.length > 0) {
+    sections.push("", "### Added", ...added.map((m) => `- ${m}`))
+  }
+  if (fixed.length > 0) {
+    sections.push("", "### Fixed", ...fixed.map((m) => `- ${m}`))
+  }
+  if (changed.length > 0) {
+    sections.push("", "### Changed", ...changed.map((m) => `- ${m}`))
+  }
+  if (added.length === 0 && fixed.length === 0 && changed.length === 0) {
+    sections.push("", "### Changed", "- Internal improvements and dependency updates")
+  }
+
+  const entry = sections.join("\n")
+  text = text.replace("## [Unreleased]", `## [Unreleased]\n\n${entry}\n`)
   await Bun.file(changelog).write(text)
   console.log("   ✓ CHANGELOG.md")
 }
@@ -112,8 +144,24 @@ console.log(`   ✓ ${tag} pushed`)
 
 // ─── Step 6: GitHub Release ──────────────────────
 console.log("\n6. Creating GitHub Release...")
+
+// Collect commit messages since previous tag for release notes
+let releaseChanges: string[] = []
+try {
+  const prevTag = (await $`git describe --tags --abbrev=0 ${tag}^`.cwd(root).text()).trim()
+  const log = (await $`git log ${prevTag}..${tag}^ --oneline --no-decorate`.cwd(root).text()).trim()
+  releaseChanges = log.split("\n").filter(Boolean).map((line) =>
+    `- ${line.replace(/^[a-f0-9]+ /, "")}`
+  )
+} catch {
+  releaseChanges = ["- See CHANGELOG.md for details"]
+}
+
 const notes = [
   `## codeblog-app ${tag}`,
+  "",
+  "### Changes",
+  ...releaseChanges,
   "",
   "### Install",
   "```bash",
