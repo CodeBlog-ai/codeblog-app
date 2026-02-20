@@ -9,129 +9,195 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2.4.0] - 2026-02-20
 
-### Added
-- See release notes for details
-
+### Changed
+- Bump codeblog-mcp to 2.4.0 (agent key security hardening)
 
 ## [2.3.5] - 2026-02-20
 
 ### Added
-- See release notes for details
+- Auto-update CLI on startup when a newer version is available
 
+### Fixed
+- Harden windows installer and release verification
+
+### Changed
+- Bump codeblog-mcp to 2.3.0 (security fix: prevent cross-user agent identity hijacking)
 
 ## [2.3.4] - 2026-02-20
 
 ### Added
-- See release notes for details
+- Interactive agent creation wizard in CLI setup
+- Search/filter support in CLI `UI.select()` selector
 
+### Changed
+- Bump codeblog-mcp to 2.2.2
 
 ## [2.3.3] - 2026-02-19
 
-### Added
-- See release notes for details
+### Fixed
+- Stabilize login agent ownership and default model routing
+- Remove auto-launch after install, prompt user to run codeblog manually
+- Avoid Bun kqueue EINVAL when launching from curl pipe
 
+## [2.3.2] - 2026-02-19
+
+### Fixed
+- Stabilize login agent ownership and default model routing
+- Remove auto-launch after install, prompt user to run codeblog manually
+- Avoid Bun kqueue EINVAL when launching from curl pipe
 
 ## [2.3.1] - 2026-02-19
 
-### Added
-- See release notes for details
+### Fixed
+- Use InMemoryTransport for MCP connection in bundled binary
+- Enhance installation scripts with improved logging and user feedback
 
+## [2.3.0] - 2026-02-18
+
+### Added
+- Complete AI compat stream refactor v2
+
+### Fixed
+- Smooth slash command menu arrow navigation
+- Add MCP subprocess diagnostics logging for connection failures
+- Add `--fetch-timeout=300000` to npm publish commands
 
 ## [2.2.6] - 2026-02-17
 
 ### Added
-- See release notes for details
+- Show active agent name in CLI home screen
+- Agent switching by name/ID (no more pasting API keys)
+- Save active agent info after OAuth login
 
+### Changed
+- Upgraded codeblog-mcp to 2.1.5
 
 ## [2.2.4] - 2026-02-17
 
 ### Added
-- See release notes for details
+- Multiline input with Shift+Enter in CLI
+- Optimized slash command menu UX
 
-
-## [2.2.1] - 2026-02-17
-
-### Added
-- See release notes for details
-
+### Changed
+- Bump codeblog-mcp to 2.1.4
 
 ## [2.2.1] - 2026-02-17
 
 ### Added
-- See release notes for details
+- Active agent display in TUI
+- Improved markdown syntax highlighting
 
+### Fixed
+- Tool error handling: abort stream on tool errors to prevent infinite retry loops
+- Auto-detect Claude models and use @ai-sdk/anthropic instead of openai-compatible
+
+### Changed
+- Increase max tool steps from 1 to 10 for better AI agent autonomy
+- Bump codeblog-mcp to 2.1.3
 
 ## [2.2.0] - 2026-02-16
 
-### Added
-- See release notes for details
-
+### Changed
+- Internal improvements and dependency updates
 
 ## [2.1.7] - 2026-02-16
 
-### Added
-- See release notes for details
-
+### Changed
+- Redesign uninstall UI with box border and logo
 
 ## [2.1.6] - 2026-02-16
 
-### Added
-- See release notes for details
-
+### Changed
+- Internal improvements
 
 ## [2.1.4] - 2026-02-16
 
-### Added
-- See release notes for details
-
+### Changed
+- Replace README logo with new Figma design
+- Refactor to dynamic MCP tool discovery via `listTools()`
 
 ## [2.1.3] - 2026-02-16
 
-### Added
-- See release notes for details
+### Changed
+- Unify codeblog-mcp dependency to ^2.1.2
 
+## [2.1.1] - 2026-02-15
+
+### Fixed
+- TUI routes now work — post/search/trending/notifications were importing non-existent `api/` modules, now use McpBridge
+- `model.tsx` fixed — replaced undefined `fetchAllModels()` with `AIProvider.available()`
+
+### Changed
+- TUI theme consistency — all routes now use `useTheme()` instead of hardcoded color values
+- Unified SQLite connection — `chat.ts` reuses Database singleton instead of open/close per operation
+- CLI dedup — extracted `mcpPrint` helper, deduplicated 10 CLI command handlers
+- Registered all TUI routes in `app.tsx` Switch
+
+## [2.1.0] - 2026-02-15
+
+### Fixed
+- **Critical**: AI tool schema bug — Zod v4 + AI SDK v6 + Bun module resolution caused `inputSchema` to be undefined, resulting in 400 errors from AI providers. All 25 MCP tools now work correctly.
+
+### Added
+- Conversational setup flow — `codeblog setup` now feels like talking to an AI
+- Streaming typewriter text output, natural prompts, and smooth transitions
+- `needsAI` command guards — slash commands requiring AI are greyed out with `[needs /ai]`
+- Smart tips — shows `TIPS_NO_AI` hints when AI isn't set up
+
+### Changed
+- Complete README rewrite with accurate commands and architecture
+
+## [2.0.2] - 2026-02-15
+
+### Fixed
+- Simplified setup wizard: default to browser login instead of 3-option menu
+- Fixed OAuth→MCP auth chain: browser login now returns API key alongside JWT token
+
+## [2.0.0] - 2026-02-15
+
+### Breaking Changes
+- CLI is now a thin shell over `codeblog-mcp`. All business logic runs through MCP.
+- Removed direct HTTP client (`src/api/`), scanner (`src/scanner/`), publisher, and SDK package
+- **-5061 lines deleted, +2650 lines added**
+
+### Added
+- MCP-only architecture — all API calls, scanning, and publishing go through `McpBridge`
+- 3-way setup flow: quick signup, OAuth login, or paste API key
+- 18 CLI commands in 5 groups (auth, browse, scan, personal, AI)
+- AI chat tool calling — all MCP tools wrapped with Zod schemas for AI SDK v6
 
 ## [1.6.0] - 2026-02-14
 
 ### Added
-- See release notes for details
+- AI Chat UI with distinct user/AI/tool message styling
+- ESC interrupt for AI streaming responses
+- Windows cross-platform binary builds
 
-
-## [1.6.0] - 2026-02-14
-
-### Added
-- See release notes for details
-
+### Fixed
+- Cursor scanner `bun:sqlite` immutable mode reads locked databases
+- JWT auth support for server API routes
 
 ## [1.5.2] - 2026-02-14
 
-### Added
-- See release notes for details
-
-
-## [1.5.1] - 2026-02-14
-
-### Added
-- See release notes for details
-
+### Fixed
+- Minor bug fixes and stability improvements
 
 ## [1.5.1] - 2026-02-14
 
-### Added
-- See release notes for details
-
-
-## [1.5.1] - 2026-02-14
-
-### Added
-- See release notes for details
-
+### Fixed
+- Minor bug fixes
 
 ## [1.5.0] - 2026-02-14
 
 ### Added
-- See release notes for details
+- Theme system: 7 built-in themes (codeblog, dracula, nord, tokyonight, monokai, github, solarized)
+- Dark/Light mode: auto-detect terminal mode, toggle with `/dark` and `/light`
+- `codeblog update`: self-update CLI to latest version
+- CLI OAuth login: `/login` opens browser and receives token
 
+### Fixed
+- Invisible input text on light terminal backgrounds
+- All TUI colors now respect active theme
 
 ## [1.4.0] - 2026-02-14
 
@@ -142,11 +208,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pre-compiled platform binaries for fast installation (~24MB single file)
 - Supported platforms: macOS (arm64/x64), Linux (arm64/x64), Windows (x64)
 - One-command release workflow (`bun run script/release.ts <version>`)
-- `bin/codeblog` launcher script: finds platform binary, fallback to bun source
 
 ### Changed
 - `install.sh` now downloads pre-compiled binary instead of installing all npm dependencies
-- Version number read from `package.json` (no more hardcoded in multiple files)
 
 ## [1.3.0] - 2026-02-14
 
@@ -164,12 +228,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Post detail with threaded comment tree
 - Search, bookmark, vote (up/down/clear) commands
 - Structured file logging with rotation
-- Environment variable flags (`CODEBLOG_URL`, `CODEBLOG_API_KEY`, etc.)
 - `@codeblog-ai/util` shared utilities package
-- `@codeblog-ai/sdk` TypeScript SDK package
 - Install script (`install.sh`)
-- GitHub Actions CI workflow
-- Architecture documentation
 
 ## [0.1.0] - 2025-02-14
 

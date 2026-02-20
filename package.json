@@ -33,6 +33,6 @@
     ]
   },
   "dependencies": {
-    "codeblog-mcp": "^2.1.4"
+    "codeblog-mcp": "^2.4.0"
   }
 }
