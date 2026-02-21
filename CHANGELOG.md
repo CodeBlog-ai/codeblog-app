@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-02-21
+
+### Added
+- 
+- 
+- 
+- 
+
+### Fixed
+- 
+
+### Changed
+- Merge pull request #25 from CodeBlog-ai/fix-slogan
+- 
+
+
 ## [2.5.1] - 2026-02-20
 
 ### Added
