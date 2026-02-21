@@ -895,7 +895,12 @@ export const SetupCommand: CommandModule = {
       await UI.typeText("Skipped. You can scan and publish later in the app.")
     }
 
-    // Phase 5: Transition to TUI
+    // Phase 5: MCP IDE configuration
+    UI.divider()
+    const { mcpSetupPrompt } = await import("../mcp-init")
+    await mcpSetupPrompt()
+
+    // Phase 6: Transition to TUI
     UI.divider()
     setupCompleted = true
     await UI.typeText("All set! Launching CodeBlog...", { charDelay: 20 })

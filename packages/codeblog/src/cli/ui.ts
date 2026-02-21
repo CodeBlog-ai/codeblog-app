@@ -337,6 +337,107 @@ export namespace UI {
     })
   }
 
+  export async function multiSelect(prompt: string, options: string[]): Promise<number[]> {
+    if (options.length === 0) return []
+
+    const stdin = process.stdin
+    const wasRaw = stdin.isRaw
+    if (stdin.isTTY && stdin.setRawMode) stdin.setRawMode(true)
+    process.stderr.write("\x1b[?25l")
+
+    let idx = 0
+    const selected = new Set<number>()
+    let drawnRows = 0
+    const maxRows = 12
+    let onData: ((ch: Buffer) => void) = () => {}
+
+    const stripAnsi = (text: string) => text.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "").replace(/\x1b./g, "")
+    const rowCount = (line: string) => {
+      const cols = Math.max(20, process.stderr.columns || 80)
+      const len = Array.from(stripAnsi(line)).length
+      return Math.max(1, Math.ceil((len || 1) / cols))
+    }
+
+    const draw = () => {
+      if (drawnRows > 1) process.stderr.write(`\x1b[${drawnRows - 1}F`)
+      process.stderr.write("\x1b[J")
+
+      const count = options.length
+      const start = count <= maxRows ? 0 : Math.max(0, Math.min(idx - 4, count - maxRows))
+      const items = options.slice(start, start + maxRows)
+      const lines = [
+        prompt,
+        ...items.map((label, i) => {
+          const realIdx = start + i
+          const active = realIdx === idx
+          const checked = selected.has(realIdx)
+          const box = checked ? `${Style.TEXT_SUCCESS}◉${Style.TEXT_NORMAL}` : "○"
+          const cursor = active ? `${Style.TEXT_HIGHLIGHT}❯${Style.TEXT_NORMAL}` : " "
+          const text = active ? `${Style.TEXT_NORMAL_BOLD}${label}${Style.TEXT_NORMAL}` : label
+          return `  ${cursor} ${box} ${text}`
+        }),
+        count > maxRows
+          ? `  ${Style.TEXT_DIM}${start > 0 ? "↑ more  " : ""}${start + maxRows < count ? "↓ more" : ""}${Style.TEXT_NORMAL}`
+          : `  ${Style.TEXT_DIM}${Style.TEXT_NORMAL}`,
+        `  ${Style.TEXT_DIM}↑/↓ move · Space toggle · a all · Enter confirm · Esc cancel${Style.TEXT_NORMAL}`,
+      ]
+      process.stderr.write(lines.map((line) => `\x1b[2K\r${line}`).join("\n"))
+      drawnRows = lines.reduce((sum, line) => sum + rowCount(line), 0)
+    }
+
+    const restore = () => {
+      process.stderr.write("\x1b[?25h")
+      if (stdin.isTTY && stdin.setRawMode) stdin.setRawMode(wasRaw ?? false)
+      stdin.removeListener("data", onData)
+      process.stderr.write("\n")
+    }
+
+    draw()
+
+    return new Promise((resolve) => {
+      onData = (ch: Buffer) => {
+        const c = ch.toString("utf8")
+        if (c === "\u0003") {
+          restore()
+          process.exit(130)
+        }
+        if (c === "\r" || c === "\n") {
+          restore()
+          resolve([...selected].sort((a, b) => a - b))
+          return
+        }
+        if (c === "\x1b") {
+          restore()
+          resolve([])
+          return
+        }
+        if (c === " ") {
+          if (selected.has(idx)) selected.delete(idx)
+          else selected.add(idx)
+          draw()
+          return
+        }
+        if (c === "a") {
+          if (selected.size === options.length) selected.clear()
+          else options.forEach((_, i) => selected.add(i))
+          draw()
+          return
+        }
+        if (c.includes("\x1b[A") || c.includes("\x1bOA") || c === "k") {
+          idx = (idx - 1 + options.length) % options.length
+          draw()
+          return
+        }
+        if (c.includes("\x1b[B") || c.includes("\x1bOB") || c === "j") {
+          idx = (idx + 1) % options.length
+          draw()
+          return
+        }
+      }
+      stdin.on("data", onData)
+    })
+  }
+
   export async function waitKey(prompt: string, keys: string[]): Promise<string> {
     const stdin = process.stdin
     process.stderr.write(`  ${Style.TEXT_DIM}${prompt}${Style.TEXT_NORMAL}`)

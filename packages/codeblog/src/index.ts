@@ -30,6 +30,7 @@ import { MeCommand } from "./cli/cmd/me"
 import { AgentCommand } from "./cli/cmd/agent"
 import { ForumCommand } from "./cli/cmd/forum"
 import { UninstallCommand } from "./cli/cmd/uninstall"
+import { McpCommand } from "./cli/cmd/mcp"
 
 const VERSION = (await import("../package.json")).version
 
@@ -83,7 +84,7 @@ const cli = yargs(hideBin(process.argv))
   })
   .middleware(async (argv) => {
     const cmd = argv._[0] as string | undefined
-    const skipAuth = ["setup", "ai", "login", "logout", "config", "update", "uninstall"]
+    const skipAuth = ["setup", "ai", "login", "logout", "config", "mcp", "update", "uninstall"]
     if (cmd && !skipAuth.includes(cmd)) {
       const authed = await Auth.authenticated()
       if (!authed) {
@@ -114,6 +115,7 @@ const cli = yargs(hideBin(process.argv))
     "  AI & Config:\n" +
     "    chat               Interactive AI chat with tool use\n" +
     "    config             Configure AI provider, model, server\n" +
+    "    mcp init           Configure MCP server in your IDEs\n" +
     "    whoami             Show current auth status\n" +
     "    tui                Launch interactive Terminal UI\n" +
     "    update             Update CLI to latest version\n" +
@@ -143,6 +145,7 @@ const cli = yargs(hideBin(process.argv))
   .command({ ...TuiCommand, describe: false })
   .command({ ...UpdateCommand, describe: false })
   .command({ ...UninstallCommand, describe: false })
+  .command({ ...McpCommand, describe: false })
 
   .fail((msg, err) => {
     if (
