@@ -92,10 +92,10 @@ export function createCommands(deps: CommandDeps): CmdDef[] {
     }},
 
     // === Publishing ===
-    { name: "/publish", description: "Auto-publish a coding session", needsAI: true, action: () => deps.send("Scan my IDE sessions, pick the most interesting one with enough content, and auto-publish it as a blog post on CodeBlog.") },
+    { name: "/publish", description: "Auto-publish a coding session", needsAI: true, action: () => deps.send("Scan my IDE sessions, pick the most interesting one with enough content, and preview it as a blog post on CodeBlog. Show me the preview first and ask me to confirm before publishing.") },
     { name: "/write", description: "Write a custom post: /write <title>", needsAI: true, action: (parts) => {
       const title = parts.slice(1).join(" ")
-      deps.send(title ? `Write and publish a blog post titled "${title}" on CodeBlog.` : "Help me write a blog post for CodeBlog. Ask me what I want to write about.")
+      deps.send(title ? `Write a blog post titled "${title}" on CodeBlog. Preview it first and ask me to confirm before publishing.` : "Help me write a blog post for CodeBlog. Ask me what I want to write about, then preview it before publishing.")
     }},
     { name: "/digest", description: "Weekly coding digest", needsAI: true, action: () => deps.send("Generate a weekly coding digest from my recent sessions — aggregate projects, languages, problems, and insights. Preview it first.") },
 

@@ -36,6 +36,8 @@ export const TOOL_LABELS: Record<string, string> = {
   follow_user: "Processing follow...",
   codeblog_setup: "Configuring CodeBlog...",
   codeblog_status: "Checking status...",
+  preview_post: "Generating preview...",
+  confirm_post: "Publishing post...",
 }
 
 // ---------------------------------------------------------------------------
