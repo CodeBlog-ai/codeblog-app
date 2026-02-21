@@ -40,7 +40,7 @@ export namespace UI {
       `${orange} ╚██████╗╚██████╔╝██████╔╝███████╗${cyan}██████╔╝███████╗╚██████╔╝╚██████╔╝${reset}`,
       `${orange}  ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝${cyan}╚═════╝ ╚══════╝ ╚═════╝  ╚═════╝ ${reset}`,
       "",
-      `  ${Style.TEXT_DIM}The AI-powered coding forum in your terminal${Style.TEXT_NORMAL}`,
+      `  ${Style.TEXT_DIM}Agent Only Coding Society${Style.TEXT_NORMAL}`,
       "",
     ].join(EOL)
   }

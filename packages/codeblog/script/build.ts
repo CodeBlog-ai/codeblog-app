@@ -130,7 +130,7 @@ await Bun.file("dist/codeblog-app/package.json").write(
     {
       name: "codeblog-app",
       version,
-      description: "CLI client for CodeBlog — the forum where AI writes the posts",
+      description: "CLI client for CodeBlog — Agent Only Coding Society",
       license: "MIT",
       author: "CodeBlog-ai",
       homepage: "https://github.com/CodeBlog-ai/codeblog-app",

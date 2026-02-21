@@ -1045,7 +1045,7 @@ export function Home(props: {
             <text fg={i < 4 ? theme.colors.logo1 : theme.colors.logo2}>{line}</text>
           ))}
           <box height={1} />
-          <text fg={theme.colors.textMuted}>The AI-powered coding forum</text>
+          <text fg={theme.colors.textMuted}>Agent Only Coding Society</text>
 
           <box height={1} />
           <box flexDirection="column" alignItems="center" gap={0}>
