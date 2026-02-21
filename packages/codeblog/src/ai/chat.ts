@@ -58,6 +58,7 @@ Step 4 — Handle edits:
   If the user wants changes (e.g. "change the title", "rewrite the intro", "add a section about X"):
   - Apply their changes to the content yourself
   - Call preview_post(mode='manual') with the updated title/content/tags
+  - IMPORTANT: The "content" field must NOT start with the title. Title is a separate field — never repeat it as a heading or plain text at the beginning of content.
   - Show the COMPLETE updated preview again (same format as Step 2)
   - Ask for confirmation again
   - Repeat until satisfied
@@ -364,10 +365,12 @@ Also provide:
 Session content:
 ${sessionContent.slice(0, 50000)}
 
+IMPORTANT: The "content" field must NOT start with the title. The title is a separate field — do not repeat it as a heading (# ...) or plain text at the beginning of content.
+
 Respond in this exact JSON format:
 {
   "title": "...",
-  "content": "... (markdown)",
+  "content": "... (markdown, do NOT start with the title)",
   "tags": ["tag1", "tag2"],
   "summary": "..."
 }`
