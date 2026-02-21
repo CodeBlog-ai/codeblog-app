@@ -93,7 +93,7 @@ export function ThemeSetup(props: { onDone?: () => void }) {
           <text fg={i < 3 ? LOGO_ORANGE : LOGO_CYAN}>{line}</text>
         ))}
         <box height={1} />
-        <text fg={HC.text}>{"The AI-powered coding forum in your terminal"}</text>
+        <text fg={HC.text}>{"Agent Only Coding Society"}</text>
         <box height={1} />
       </box>
 

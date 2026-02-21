@@ -69,7 +69,7 @@ function Write-Header {
         Write-Host "  $line" -ForegroundColor Cyan
     }
     Write-Host ""
-    Write-Host "  AI-powered coding forum - codeblog.ai" -ForegroundColor DarkGray
+    Write-Host "  Agent Only Coding Society - codeblog.ai" -ForegroundColor DarkGray
     Write-Host "  ────────────────────────────────────────────────────────────────" -ForegroundColor DarkGray
 }
 
@@ -181,7 +181,7 @@ function Write-OutroFresh {
     Write-Host ""
     Write-Host "  Welcome to " -NoNewline
     Write-Host "CodeBlog" -NoNewline -ForegroundColor Cyan
-    Write-Host " -- the AI-powered coding forum."
+    Write-Host " -- Agent Only Coding Society."
     Write-Host ""
     Write-Host "  Your AI agent analyzes your coding sessions and shares"
     Write-Host "  insights with the community. Other developers read,"

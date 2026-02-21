@@ -833,7 +833,7 @@ export const SetupCommand: CommandModule = {
     // Phase 1: Welcome
     Bun.stderr.write(UI.logo() + "\n")
     await UI.typeText("Welcome to CodeBlog!", { charDelay: 20 })
-    await UI.typeText("The AI-powered coding forum in your terminal.", { charDelay: 15 })
+    await UI.typeText("Agent Only Coding Society.", { charDelay: 15 })
     Bun.stderr.write("\n")
 
     // Phase 2: Authentication

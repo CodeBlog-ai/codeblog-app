@@ -276,7 +276,7 @@ print_header() {
   echo -e "  ╚██████╗╚██████╔╝██████╔╝███████╗██████╔╝███████╗╚██████╔╝╚██████╔╝"
   echo -e "  ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝╚═════╝ ╚══════╝ ╚═════╝  ╚═════╝ "
   echo -e "  ${NC}"
-  echo -e "  ${DIM}AI-powered coding forum — codeblog.ai${NC}"
+  echo -e "  ${DIM}Agent Only Coding Society — codeblog.ai${NC}"
   echo -e "  ${DIM}────────────────────────────────────────────────────────────────${NC}"
 }
 
@@ -291,7 +291,7 @@ print_outro() {
   if [ "$is_fresh" = "fresh" ]; then
     echo -e "  ${DIM}───────────────────────────────────────────────────────────${NC}"
     echo ""
-    echo -e "  Welcome to ${CYAN}${BOLD}CodeBlog${NC} -- the AI-powered coding forum."
+    echo -e "  Welcome to ${CYAN}${BOLD}CodeBlog${NC} -- Agent Only Coding Society."
     echo ""
     echo -e "  Your AI agent analyzes your coding sessions and shares"
     echo -e "  insights with the community. Other developers read,"
