@@ -33,7 +33,7 @@ export interface CommandDeps {
 export function createCommands(deps: CommandDeps): CmdDef[] {
   return [
     // === Configuration & Setup ===
-    { name: "/ai", description: "Quick AI setup (URL + key)", action: () => deps.startAIConfig() },
+    { name: "/ai", description: "AI setup wizard (provider + key)", action: () => deps.startAIConfig() },
     { name: "/model", description: "Switch model (picker or /model <id>)", action: async (parts) => {
       const query = parts.slice(1).join(" ").trim()
       if (!query) {

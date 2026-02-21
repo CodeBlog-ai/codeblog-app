@@ -5,12 +5,119 @@ import { useExit } from "../context/exit"
 import { useTheme, type ThemeColors } from "../context/theme"
 import { createCommands, LOGO, TIPS, TIPS_NO_AI } from "../commands"
 import { TOOL_LABELS } from "../../ai/tools"
-import { mask, saveProvider } from "../../ai/configure"
+import { mask } from "../../ai/configure"
 import { ChatHistory } from "../../storage/chat"
 import { TuiStreamAssembler } from "../stream-assembler"
 import { resolveAssistantContent } from "../ai-stream"
 import { isShiftEnterSequence, onInputIntent } from "../input-intent"
 import { Log } from "../../util/log"
+
+interface ProviderChoice {
+  name: string
+  providerID: string
+  api: "anthropic" | "openai" | "google" | "openai-compatible"
+  baseURL?: string
+  hint?: string
+}
+
+const PROVIDER_CHOICES: ProviderChoice[] = [
+  { name: "OpenAI", providerID: "openai", api: "openai", baseURL: "https://api.openai.com", hint: "Codex OAuth + API key style" },
+  { name: "Anthropic", providerID: "anthropic", api: "anthropic", baseURL: "https://api.anthropic.com", hint: "Claude API key" },
+  { name: "Google", providerID: "google", api: "google", baseURL: "https://generativelanguage.googleapis.com", hint: "Gemini API key" },
+  { name: "OpenRouter", providerID: "openai-compatible", api: "openai-compatible", baseURL: "https://openrouter.ai/api", hint: "OpenAI-compatible" },
+  { name: "vLLM", providerID: "openai-compatible", api: "openai-compatible", baseURL: "http://127.0.0.1:8000", hint: "Local/self-hosted OpenAI-compatible" },
+  { name: "MiniMax", providerID: "openai-compatible", api: "openai-compatible", baseURL: "https://api.minimax.io", hint: "OpenAI-compatible endpoint" },
+  { name: "Moonshot AI (Kimi K2.5)", providerID: "openai-compatible", api: "openai-compatible", baseURL: "https://api.moonshot.ai", hint: "OpenAI-compatible endpoint" },
+  { name: "xAI (Grok)", providerID: "openai-compatible", api: "openai-compatible", baseURL: "https://api.x.ai", hint: "OpenAI-compatible endpoint" },
+  { name: "Qianfan", providerID: "openai-compatible", api: "openai-compatible", baseURL: "https://qianfan.baidubce.com", hint: "OpenAI-compatible endpoint" },
+  { name: "Vercel AI Gateway", providerID: "openai-compatible", api: "openai-compatible", baseURL: "https://ai-gateway.vercel.sh", hint: "OpenAI-compatible endpoint" },
+  { name: "OpenCode Zen", providerID: "openai-compatible", api: "openai-compatible", baseURL: "https://opencode.ai/zen", hint: "OpenAI-compatible endpoint" },
+  { name: "Xiaomi", providerID: "anthropic", api: "anthropic", baseURL: "https://api.xiaomimimo.com/anthropic", hint: "Anthropic-compatible endpoint" },
+  { name: "Synthetic", providerID: "anthropic", api: "anthropic", baseURL: "https://api.synthetic.new", hint: "Anthropic-compatible endpoint" },
+  { name: "Together AI", providerID: "openai-compatible", api: "openai-compatible", baseURL: "https://api.together.xyz", hint: "OpenAI-compatible endpoint" },
+  { name: "Hugging Face", providerID: "openai-compatible", api: "openai-compatible", baseURL: "https://router.huggingface.co", hint: "OpenAI-compatible endpoint" },
+  { name: "Venice AI", providerID: "openai-compatible", api: "openai-compatible", baseURL: "https://api.venice.ai/api", hint: "OpenAI-compatible endpoint" },
+  { name: "LiteLLM", providerID: "openai-compatible", api: "openai-compatible", baseURL: "http://localhost:4000", hint: "Unified OpenAI-compatible gateway" },
+  { name: "Cloudflare AI Gateway", providerID: "anthropic", api: "anthropic", hint: "Enter full Anthropic gateway URL manually" },
+  { name: "Custom Provider", providerID: "openai-compatible", api: "openai-compatible", hint: "Any OpenAI-compatible URL" },
+]
+
+type AiSetupStep = "" | "provider" | "url" | "key" | "testing"
+
+function isOfficialOpenAIBase(baseURL: string): boolean {
+  try { return new URL(baseURL).hostname === "api.openai.com" } catch { return false }
+}
+
+function providerLabel(p: ProviderChoice): string {
+  return p.hint ? `${p.name} (${p.hint})` : p.name
+}
+
+async function fetchOpenAIModels(baseURL: string, key: string): Promise<string[]> {
+  try {
+    const clean = baseURL.replace(/\/+$/, "")
+    const url = clean.endsWith("/v1") ? `${clean}/models` : `${clean}/v1/models`
+    const r = await fetch(url, { headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(8000) })
+    if (!r.ok) return []
+    const data = await r.json() as { data?: Array<{ id: string }> }
+    return data.data?.map((m) => m.id) || []
+  } catch { return [] }
+}
+
+function pickPreferredRemoteModel(models: string[]): string | undefined {
+  if (models.length === 0) return undefined
+  const preferred = [/^gpt-5\.2$/, /^claude-sonnet-4(?:-5)?/, /^gpt-5(?:\.|$|-)/, /^gpt-4o$/, /^gpt-4o-mini$/, /^gemini-2\.5-flash$/]
+  for (const pattern of preferred) {
+    const found = models.find((id) => pattern.test(id))
+    if (found) return found
+  }
+  return models[0]
+}
+
+async function verifyEndpoint(choice: ProviderChoice, baseURL: string, key: string): Promise<{ ok: boolean; detail: string; detectedApi?: "anthropic" | "openai" | "google" | "openai-compatible" }> {
+  try {
+    if (choice.api === "anthropic") {
+      const clean = baseURL.replace(/\/+$/, "")
+      const r = await fetch(`${clean}/v1/messages`, {
+        method: "POST",
+        headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+        body: JSON.stringify({ model: "claude-3-5-haiku-latest", max_tokens: 1, messages: [{ role: "user", content: "ping" }] }),
+        signal: AbortSignal.timeout(8000),
+      })
+      if (r.status !== 404) return { ok: true, detail: `Anthropic endpoint reachable (${r.status})`, detectedApi: "anthropic" }
+      return { ok: false, detail: "Anthropic endpoint returned 404" }
+    }
+    if (choice.api === "google") {
+      const clean = baseURL.replace(/\/+$/, "")
+      const r = await fetch(`${clean}/v1beta/models?key=${encodeURIComponent(key)}`, { signal: AbortSignal.timeout(8000) })
+      if (r.ok || r.status === 401 || r.status === 403) return { ok: true, detail: `Google endpoint reachable (${r.status})` }
+      return { ok: false, detail: `Google endpoint responded ${r.status}` }
+    }
+    const { probe } = await import("../../ai/configure")
+    const detected = await probe(baseURL, key)
+    if (detected === "anthropic") return { ok: true, detail: "Detected Anthropic API format", detectedApi: "anthropic" }
+    if (detected === "openai") {
+      const api = choice.providerID === "openai" && isOfficialOpenAIBase(baseURL) ? "openai" as const : "openai-compatible" as const
+      return { ok: true, detail: "Detected OpenAI API format", detectedApi: api }
+    }
+    const models = await fetchOpenAIModels(baseURL, key)
+    if (models.length > 0) {
+      const api = choice.providerID === "openai" && isOfficialOpenAIBase(baseURL) ? "openai" as const : "openai-compatible" as const
+      return { ok: true, detail: `Model endpoint reachable (${models.length} models)`, detectedApi: api }
+    }
+    return { ok: false, detail: "Could not detect endpoint format or list models" }
+  } catch (err) {
+    return { ok: false, detail: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+async function pickQuickModel(choice: ProviderChoice, baseURL: string, key: string): Promise<string> {
+  const openaiCustom = choice.providerID === "openai" && !isOfficialOpenAIBase(baseURL)
+  if (choice.providerID === "anthropic") return "claude-sonnet-4-20250514"
+  if (choice.providerID === "openai" && !openaiCustom) return "gpt-5.2"
+  if (choice.providerID === "google") return "gemini-2.5-flash"
+  const remote = await fetchOpenAIModels(baseURL, key)
+  return pickPreferredRemoteModel(remote) || "gpt-5.2"
+}
 
 function buildMarkdownSyntaxRules(colors: ThemeColors): ThemeTokenStyle[] {
   return [
@@ -131,9 +238,12 @@ export function Home(props: {
 
   const tipPool = () => props.hasAI ? TIPS : TIPS_NO_AI
   const tipIdx = Math.floor(Math.random() * TIPS.length)
-  const [aiMode, setAiMode] = createSignal<"" | "url" | "key" | "testing">("")
+  const [aiMode, setAiMode] = createSignal<AiSetupStep>("")
   const [aiUrl, setAiUrl] = createSignal("")
   const [aiKey, setAiKey] = createSignal("")
+  const [aiProviderIdx, setAiProviderIdx] = createSignal(0)
+  const [aiProviderQuery, setAiProviderQuery] = createSignal("")
+  const [aiProvider, setAiProvider] = createSignal<ProviderChoice | null>(null)
   const [modelPicking, setModelPicking] = createSignal(false)
   const [modelOptions, setModelOptions] = createSignal<ModelOption[]>([])
   const [modelIdx, setModelIdx] = createSignal(0)
@@ -305,8 +415,12 @@ export function Home(props: {
     onLogout: props.onLogout,
     clearChat,
     startAIConfig: () => {
-      setAiUrl(""); setAiKey(""); setAiMode("url")
-      showMsg("Quick setup: paste API URL (or press Enter to skip). Full wizard: `codeblog ai setup`", theme.colors.primary)
+      setAiUrl("")
+      setAiKey("")
+      setAiProviderIdx(0)
+      setAiProviderQuery("")
+      setAiProvider(null)
+      setAiMode("provider")
     },
     setMode: theme.setMode,
     send,
@@ -395,12 +509,26 @@ export function Home(props: {
   onCleanup(() => offInputIntent())
 
   usePaste((evt) => {
-    // For URL/key modes, strip newlines; for normal input, preserve them
-    if (aiMode() === "url" || aiMode() === "key") {
+    const mode = aiMode()
+    if (mode === "provider") {
       const text = evt.text.replace(/[\n\r]/g, "").trim()
       if (!text) return
       evt.preventDefault()
-      if (aiMode() === "url") { setAiUrl(text); return }
+      setAiProviderQuery(text)
+      setAiProviderIdx(0)
+      return
+    }
+    if (mode === "url") {
+      const text = evt.text.replace(/[\n\r]/g, "").trim()
+      if (!text) return
+      evt.preventDefault()
+      setAiUrl(text)
+      return
+    }
+    if (mode === "key") {
+      const text = evt.text.replace(/[\n\r]/g, "").trim()
+      if (!text) return
+      evt.preventDefault()
       setAiKey(text)
       return
     }
@@ -532,50 +660,126 @@ export function Home(props: {
     }
   }
 
-  async function saveAI() {
-    setAiMode("testing")
-    showMsg("Detecting API format...", theme.colors.primary)
-    try {
-      const result = await saveProvider(aiUrl().trim(), aiKey().trim())
-      if (result.error) {
-        showMsg(result.error, theme.colors.error)
-        setAiMode("key")
-        return
-      }
-      showMsg(`✓ AI configured! (${result.provider})`, theme.colors.success)
+  const aiProviderFiltered = createMemo(() => {
+    const q = aiProviderQuery().trim().toLowerCase()
+    const all = [...PROVIDER_CHOICES, { name: "Skip for now", providerID: "", api: "openai" as const, hint: "" }]
+    if (!q) return all
+    return all.filter((p) => p.name.toLowerCase().includes(q) || (p.hint || "").toLowerCase().includes(q))
+  })
+
+  const aiProviderVisibleStart = createMemo(() => {
+    const len = aiProviderFiltered().length
+    if (len <= 10) return 0
+    return Math.max(0, Math.min(aiProviderIdx() - 4, len - 10))
+  })
+
+  const aiProviderVisibleItems = createMemo(() => {
+    const start = aiProviderVisibleStart()
+    return aiProviderFiltered().slice(start, start + 10)
+  })
+
+  createEffect(() => {
+    const len = aiProviderFiltered().length
+    const idx = aiProviderIdx()
+    if (len === 0 && idx !== 0) { setAiProviderIdx(0); return }
+    if (idx >= len) setAiProviderIdx(Math.max(0, len - 1))
+  })
+
+  function confirmProvider() {
+    const list = aiProviderFiltered()
+    const selected = list[aiProviderIdx()]
+    if (!selected || !selected.providerID) {
+      showMsg("Skipped AI setup.", theme.colors.warning)
       setAiMode("")
-      props.onAIConfigured()
-    } catch (err) {
-      showMsg(`Save failed: ${err instanceof Error ? err.message : String(err)}`, theme.colors.error)
+      return
+    }
+    setAiProvider(selected)
+
+    const defaultBase = selected.baseURL || ""
+    const needsUrl =
+      selected.providerID === "openai-compatible" ||
+      selected.providerID === "openai" ||
+      !defaultBase
+    setAiUrl("")
+    if (needsUrl) {
+      setAiMode("url")
+    } else {
       setAiMode("key")
     }
   }
 
+  async function runVerifyAndSave() {
+    const choice = aiProvider()
+    if (!choice) return
+    const baseURL = aiUrl().trim()
+    const key = aiKey().trim()
+
+    setAiMode("testing")
+
+    const verify = await verifyEndpoint(choice, baseURL, key)
+    if (!verify.ok) {
+      showMsg(`Verification failed: ${verify.detail}`, theme.colors.warning)
+    }
+
+    const model = await pickQuickModel(choice, baseURL, key)
+
+    const { Config } = await import("../../config")
+    const cfg = await Config.load()
+    const providers = cfg.providers || {}
+    const resolvedApi = verify.detectedApi || choice.api
+    const resolvedCompat = choice.providerID === "openai-compatible" && resolvedApi === "openai"
+      ? "openai-compatible" as const
+      : resolvedApi
+    const providerConfig: { api_key: string; base_url?: string; api: typeof resolvedApi; compat_profile: typeof resolvedCompat } = {
+      api_key: key,
+      api: resolvedApi,
+      compat_profile: resolvedCompat,
+    }
+    if (baseURL) providerConfig.base_url = baseURL
+    providers[choice.providerID] = providerConfig
+
+    const saveModel = choice.providerID === "openai-compatible" && !model.includes("/")
+      ? `openai-compatible/${model}`
+      : model
+
+    await Config.save({
+      providers,
+      default_provider: choice.providerID,
+      model: saveModel,
+    })
+
+    showMsg(`✓ AI configured: ${choice.name} (${saveModel})`, theme.colors.success)
+    setAiMode("")
+    props.onAIConfigured()
+  }
+
   async function handleSubmit() {
+    if (aiMode() === "provider") {
+      confirmProvider()
+      return
+    }
     if (aiMode() === "url") {
       const v = aiUrl().trim()
       if (v && !v.startsWith("http")) { showMsg("URL must start with http:// or https://", theme.colors.error); return }
+      if (!v && !aiProvider()?.baseURL) { showMsg("Endpoint URL is required for this provider.", theme.colors.error); return }
+      if (!v) setAiUrl(aiProvider()?.baseURL || "")
       setAiMode("key")
-      showMsg("Now paste your API key (or press Esc to cancel):", theme.colors.primary)
       return
     }
     if (aiMode() === "key") {
-      const url = aiUrl().trim()
       const key = aiKey().trim()
-      // Both empty → friendly skip
-      if (!url && !key) {
-        showMsg("No AI configuration provided — skipped. Use /ai anytime to configure.", theme.colors.warning)
-        setAiMode("")
-        return
-      }
-      // Key empty but URL provided → friendly skip
       if (!key) {
-        showMsg("No API key provided — skipped. Use /ai anytime to configure.", theme.colors.warning)
+        showMsg("Skipped AI setup. Use /ai anytime to configure.", theme.colors.warning)
         setAiMode("")
         return
       }
-      if (key.length < 5) { showMsg("API key too short", theme.colors.error); return }
-      saveAI()
+      if (key.length < 5) { showMsg("Credential seems too short.", theme.colors.error); return }
+      try {
+        await runVerifyAndSave()
+      } catch (err) {
+        showMsg(`Save failed: ${err instanceof Error ? err.message : String(err)}`, theme.colors.error)
+        setAiMode("key")
+      }
       return
     }
 
@@ -683,9 +887,36 @@ export function Home(props: {
       (submitKey && evt.meta && !evt.ctrl) ||
       (evt.name === "j" && evt.ctrl && !evt.meta)
 
+    if (aiMode() === "provider") {
+      if (evt.name === "up" || evt.name === "k") {
+        const len = aiProviderFiltered().length
+        if (len > 0) setAiProviderIdx((i) => (i - 1 + len) % len)
+        evt.preventDefault(); return
+      }
+      if (evt.name === "down" || evt.name === "j") {
+        const len = aiProviderFiltered().length
+        if (len > 0) setAiProviderIdx((i) => (i + 1) % len)
+        evt.preventDefault(); return
+      }
+      if (submitKey || evt.name === "enter") { handleSubmit(); evt.preventDefault(); return }
+      if (evt.name === "escape") {
+        if (aiProviderQuery()) { setAiProviderQuery(""); setAiProviderIdx(0); evt.preventDefault(); return }
+        setAiMode(""); evt.preventDefault(); return
+      }
+      if (evt.name === "backspace") { setAiProviderQuery((q) => q.slice(0, -1)); setAiProviderIdx(0); evt.preventDefault(); return }
+      if (print) { setAiProviderQuery((q) => q + print); setAiProviderIdx(0); evt.preventDefault(); return }
+      if (evt.name === "space") { setAiProviderQuery((q) => q + " "); setAiProviderIdx(0); evt.preventDefault(); return }
+      return
+    }
     if (aiMode() === "url") {
       if (submitKey || newlineKey) { handleSubmit(); evt.preventDefault(); return }
-      if (evt.name === "escape") { setAiMode(""); evt.preventDefault(); return }
+      if (evt.name === "escape") {
+        setAiUrl("")
+        setAiProviderQuery("")
+        setAiProviderIdx(0)
+        setAiMode("provider")
+        evt.preventDefault(); return
+      }
       if (evt.name === "backspace") { setAiUrl((s) => s.slice(0, -1)); evt.preventDefault(); return }
       if (print === " " || evt.name === "space") { evt.preventDefault(); return }
       if (print) { setAiUrl((s) => s + print); evt.preventDefault(); return }
@@ -693,12 +924,25 @@ export function Home(props: {
     }
     if (aiMode() === "key") {
       if (submitKey || newlineKey) { handleSubmit(); evt.preventDefault(); return }
-      if (evt.name === "escape") { setAiMode("url"); setAiKey(""); showMsg("Paste your API URL (or press Enter to skip):", theme.colors.primary); evt.preventDefault(); return }
+      if (evt.name === "escape") {
+        setAiKey("")
+        const choice = aiProvider()
+        const needsUrl = choice && (choice.providerID === "openai-compatible" || choice.providerID === "openai" || !choice.baseURL)
+        if (needsUrl) {
+          setAiMode("url")
+        } else {
+          setAiProviderQuery("")
+          setAiProviderIdx(0)
+          setAiMode("provider")
+        }
+        evt.preventDefault(); return
+      }
       if (evt.name === "backspace") { setAiKey((s) => s.slice(0, -1)); evt.preventDefault(); return }
       if (print) { setAiKey((s) => s + print); evt.preventDefault(); return }
       if (evt.name === "space") { setAiKey((s) => s + " "); evt.preventDefault(); return }
       return
     }
+    if (aiMode() === "testing") { evt.preventDefault(); return }
 
     if (modelPicking()) {
       if (evt.name === "up" || evt.name === "k") {
@@ -945,9 +1189,58 @@ export function Home(props: {
 
       {/* Prompt — always at bottom */}
       <box flexShrink={0} paddingTop={1} paddingBottom={1}>
+        <Show when={aiMode() === "provider"}>
+          <box flexDirection="column">
+            <text fg={theme.colors.text}><span style={{ bold: true }}>Choose a provider</span></text>
+            <box flexDirection="row">
+              <text fg={theme.colors.primary}><span style={{ bold: true }}>{"❯ "}</span></text>
+              <Show when={!aiProviderQuery()}>
+                <text fg={theme.colors.textMuted}>type to search...</text>
+              </Show>
+              <Show when={aiProviderQuery()}>
+                <text fg={theme.colors.input}>{aiProviderQuery()}</text>
+              </Show>
+              <text fg={theme.colors.cursor}>{"█"}</text>
+            </box>
+            <Show when={aiProviderVisibleStart() > 0}>
+              <text fg={theme.colors.textMuted}>{"  ↑ more"}</text>
+            </Show>
+            <For each={aiProviderVisibleItems()}>
+              {(p, i) => {
+                const selected = () => i() + aiProviderVisibleStart() === aiProviderIdx()
+                return (
+                  <box flexDirection="row" backgroundColor={selected() ? theme.colors.primary : undefined}>
+                    <text fg={selected() ? "#ffffff" : theme.colors.text}>
+                      {"  " + (selected() ? "● " : "○ ") + providerLabel(p)}
+                    </text>
+                  </box>
+                )
+              }}
+            </For>
+            <Show when={aiProviderFiltered().length === 0}>
+              <text fg={theme.colors.warning}>{"  No matched providers"}</text>
+            </Show>
+            <Show when={aiProviderVisibleStart() + aiProviderVisibleItems().length < aiProviderFiltered().length}>
+              <text fg={theme.colors.textMuted}>{"  ↓ more"}</text>
+            </Show>
+            <text fg={theme.colors.textMuted}>{"  ↑/↓ select · Enter confirm · Esc cancel"}</text>
+          </box>
+        </Show>
         <Show when={aiMode() === "url"}>
           <box flexDirection="column">
-            <text fg={theme.colors.text}><span style={{ bold: true }}>API URL:</span></text>
+            <Show when={aiProvider()}>
+              <text fg={theme.colors.textMuted}>{"  " + aiProvider()!.name + (aiProvider()!.hint ? `: ${aiProvider()!.hint}` : "")}</text>
+            </Show>
+            <box flexDirection="row">
+              <text fg={theme.colors.text}>
+                <span style={{ bold: true }}>{"Endpoint base URL"}</span>
+                <Show when={aiProvider()?.baseURL}>
+                  <span>{` [${aiProvider()!.baseURL}]`}</span>
+                </Show>
+                <span>{": "}</span>
+              </text>
+              <text fg={theme.colors.textMuted}>{"(Esc to go back)"}</text>
+            </box>
             <box flexDirection="row">
               <text fg={theme.colors.primary}><span style={{ bold: true }}>{"❯ "}</span></text>
               <text fg={theme.colors.input}>{aiUrl()}</text>
@@ -957,8 +1250,16 @@ export function Home(props: {
         </Show>
         <Show when={aiMode() === "key"}>
           <box flexDirection="column">
-            {aiUrl().trim() ? <text fg={theme.colors.textMuted}>{"URL: " + aiUrl().trim()}</text> : null}
-            <text fg={theme.colors.text}><span style={{ bold: true }}>API Key:</span></text>
+            <Show when={aiProvider()}>
+              <text fg={theme.colors.textMuted}>{"  " + aiProvider()!.name + (aiProvider()!.hint ? `: ${aiProvider()!.hint}` : "")}</text>
+            </Show>
+            <Show when={aiUrl().trim()}>
+              <text fg={theme.colors.textMuted}>{"  Endpoint: " + aiUrl().trim()}</text>
+            </Show>
+            <box flexDirection="row">
+              <text fg={theme.colors.text}><span style={{ bold: true }}>{"API key / Bearer token: "}</span></text>
+              <text fg={theme.colors.textMuted}>{"(Esc to go back)"}</text>
+            </box>
             <box flexDirection="row">
               <text fg={theme.colors.primary}><span style={{ bold: true }}>{"❯ "}</span></text>
               <text fg={theme.colors.input}>{mask(aiKey())}</text>
@@ -967,7 +1268,7 @@ export function Home(props: {
           </box>
         </Show>
         <Show when={aiMode() === "testing"}>
-          <text fg={theme.colors.primary}>Detecting API format...</text>
+          <text fg={theme.colors.primary}>Verifying endpoint...</text>
         </Show>
         <Show when={!aiMode()}>
           <box flexDirection="column">
