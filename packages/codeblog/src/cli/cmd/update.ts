@@ -12,10 +12,12 @@ export const UpdateCommand: CommandModule = {
       default: false,
     }),
   handler: async (args) => {
+    Bun.stderr.write(UI.logo() + "\n")
+
     const pkg = await import("../../../package.json")
     const current = pkg.version
 
-    UI.info(`Current version: v${current}`)
+    UI.info(`Current version: ${UI.Style.TEXT_NORMAL_BOLD}v${current}${UI.Style.TEXT_NORMAL}`)
     UI.info("Checking for updates...")
 
     const checkController = new AbortController()
@@ -44,18 +46,45 @@ export const UpdateCommand: CommandModule = {
     const latest = data.version
 
     if (current === latest && !args.force) {
-      UI.success(`Already on latest version v${current}`)
+      UI.success(`Already on latest version ${UI.Style.TEXT_NORMAL_BOLD}v${current}${UI.Style.TEXT_NORMAL}`)
+      console.log("")
+      await promptLaunch()
       return
     }
 
-    UI.info(`Updating v${current} → v${latest}...`)
+    UI.info(`Updating ${UI.Style.TEXT_DIM}v${current}${UI.Style.TEXT_NORMAL} → ${UI.Style.TEXT_NORMAL_BOLD}v${latest}${UI.Style.TEXT_NORMAL}...`)
 
     try {
       await performUpdate(latest)
-      UI.success(`Updated to v${latest}!`)
+      console.log("")
+      UI.success(`Updated to ${UI.Style.TEXT_NORMAL_BOLD}v${latest}${UI.Style.TEXT_NORMAL}!`)
+      console.log("")
+      await promptLaunch()
     } catch (e) {
       UI.error(e instanceof Error ? e.message : String(e))
       process.exitCode = 1
     }
   },
+}
+
+async function promptLaunch() {
+  if (!process.stdin.isTTY) return
+
+  const key = await UI.waitEnter("Press Enter to launch codeblog (or Esc to exit)")
+  if (key === "escape") return
+
+  // Re-launch without subcommand args so it enters TUI.
+  // In compiled binary: process.argv = ["/path/to/codeblog", "update"]
+  // In dev mode:        process.argv = ["bun", "src/index.ts", "update"]
+  // We strip everything after the entry script to drop "update".
+  const entry = process.argv.findIndex((a) => a.endsWith("index.ts") || a.endsWith("index.js"))
+  const cmd = entry >= 0
+    ? process.argv.slice(0, entry + 1)
+    : [process.argv[0]!]
+
+  const proc = Bun.spawn(cmd, {
+    stdio: ["inherit", "inherit", "inherit"],
+  })
+  const code = await proc.exited
+  process.exit(code)
 }
