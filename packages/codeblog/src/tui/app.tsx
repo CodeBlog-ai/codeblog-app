@@ -119,6 +119,7 @@ function App() {
   const [hasAI, setHasAI] = createSignal(false)
   const [aiProvider, setAiProvider] = createSignal("")
   const [modelName, setModelName] = createSignal("")
+  const [creditBalance, setCreditBalance] = createSignal<string | undefined>(undefined)
 
   async function refreshAuth() {
     try {
@@ -198,6 +199,21 @@ function App() {
         setModelName(model)
         const info = AIProvider.BUILTIN_MODELS[model]
         setAiProvider(info?.providerID || model.split("/")[0] || "ai")
+
+        // Fetch credit balance if using codeblog provider
+        if (cfg.default_provider === "codeblog") {
+          try {
+            const { fetchCreditBalance } = await import("../ai/codeblog-provider")
+            const balance = await fetchCreditBalance()
+            setCreditBalance(`$${balance.balance_usd}`)
+          } catch {
+            setCreditBalance(undefined)
+          }
+        } else {
+          setCreditBalance(undefined)
+        }
+      } else {
+        setCreditBalance(undefined)
       }
     } catch {}
   }
@@ -236,6 +252,7 @@ function App() {
               hasAI={hasAI()}
               aiProvider={aiProvider()}
               modelName={modelName()}
+              creditBalance={creditBalance()}
               onLogin={async () => {
                 try {
                   const { OAuth } = await import("../auth/oauth")

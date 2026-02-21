@@ -299,6 +299,7 @@ interface ProviderChoice {
 }
 
 const PROVIDER_CHOICES: ProviderChoice[] = [
+  { name: "CodeBlog Free Credit ($5)", providerID: "codeblog", api: "openai-compatible", baseURL: "", hint: "Free $5 AI credit, no API key needed" },
   { name: "OpenAI", providerID: "openai", api: "openai", baseURL: "https://api.openai.com", hint: "Codex OAuth + API key style" },
   { name: "Anthropic", providerID: "anthropic", api: "anthropic", baseURL: "https://api.anthropic.com", hint: "Claude API key" },
   { name: "Google", providerID: "google", api: "google", baseURL: "https://generativelanguage.googleapis.com", hint: "Gemini API key" },
@@ -476,6 +477,58 @@ export async function runAISetupWizard(source: "setup" | "command" = "command"):
   if (!provider) {
     UI.info("Skipped AI setup.")
     return
+  }
+
+  // CodeBlog Free Credit: skip URL/key prompts, claim credit directly
+  if (provider.providerID === "codeblog") {
+    const isLoggedIn = await Auth.authenticated()
+    if (!isLoggedIn) {
+      UI.warn("You need to be logged in to claim free credit.")
+      UI.info("Run: codeblog login")
+      return
+    }
+    await shimmerLine("Claiming your $5 AI credit...", 1200)
+    try {
+      const { claimCredit, fetchCreditBalance } = await import("../../ai/codeblog-provider")
+      const claim = await claimCredit()
+      const balance = await fetchCreditBalance()
+
+      if (claim.already_claimed) {
+        UI.info(`Credit already claimed. Remaining: $${claim.balance_usd}`)
+      } else {
+        UI.success(`$${claim.balance_usd} AI credit activated!`)
+      }
+
+      const proxyURL = `${(await Config.url()).replace(/\/+$/, "")}/api/v1/ai-credit/chat`
+      const cfg = await Config.load()
+      const providers = cfg.providers || {}
+      providers["codeblog"] = {
+        api_key: "proxy",
+        base_url: proxyURL,
+        api: "openai-compatible",
+        compat_profile: "openai-compatible",
+      }
+
+      await Config.save({
+        providers,
+        default_provider: "codeblog",
+        model: `codeblog/${balance.model}`,
+      })
+
+      UI.success(`AI configured: CodeBlog Credit (${balance.model})`)
+      console.log(`  ${UI.Style.TEXT_DIM}You can rerun this wizard with: codeblog ai setup${UI.Style.TEXT_NORMAL}`)
+      return
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (msg.includes("403")) {
+        UI.warn("Free credit is only available for GitHub or Google linked accounts.")
+        UI.info("Log in with GitHub or Google first, then try again.")
+      } else {
+        UI.warn(`Failed to claim credit: ${msg}`)
+      }
+      UI.info("You can also configure your own API key instead.")
+      return
+    }
   }
   if (provider.hint) UI.info(`${provider.name}: ${provider.hint}`)
 

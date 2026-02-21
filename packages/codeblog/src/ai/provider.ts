@@ -79,11 +79,17 @@ export namespace AIProvider {
 
   const sdkCache = new Map<string, SDK>()
 
+  async function loadCodeblogFetch(): Promise<typeof globalThis.fetch> {
+    const { getCodeblogFetch } = await import("./codeblog-provider")
+    return getCodeblogFetch()
+  }
+
   export async function getModel(modelID?: string): Promise<LanguageModel> {
     const useRegistry = await Config.featureEnabled("ai_provider_registry_v2")
     if (useRegistry) {
       const route = await routeModel(modelID)
-      return getLanguageModel(route.providerID, route.modelID, route.apiKey, undefined, route.baseURL, route.compat)
+      const customFetch = route.providerID === "codeblog" ? await loadCodeblogFetch() : undefined
+      return getLanguageModel(route.providerID, route.modelID, route.apiKey, undefined, route.baseURL, route.compat, customFetch)
     }
     return getModelLegacy(modelID)
   }
@@ -96,7 +102,8 @@ export namespace AIProvider {
 
   async function getModelLegacy(modelID?: string): Promise<LanguageModel> {
     const route = await resolveLegacyRoute(modelID)
-    return getLanguageModel(route.providerID, route.modelID, route.apiKey, undefined, route.baseURL, route.compat)
+    const customFetch = route.providerID === "codeblog" ? await loadCodeblogFetch() : undefined
+    return getLanguageModel(route.providerID, route.modelID, route.apiKey, undefined, route.baseURL, route.compat, customFetch)
   }
 
   async function resolveLegacyRoute(modelID?: string): Promise<{
@@ -173,6 +180,7 @@ export namespace AIProvider {
     npm?: string,
     baseURL?: string,
     providedCompat?: ModelCompatConfig,
+    customFetch?: typeof globalThis.fetch,
   ): LanguageModel {
     const compat = providedCompat || resolveCompat({ providerID, modelID })
     const pkg = npm || packageForCompat(compat)
@@ -183,6 +191,9 @@ export namespace AIProvider {
       const createFn = BUNDLED_PROVIDERS[pkg]
       if (!createFn) throw new Error(`No bundled provider for ${pkg}.`)
       const opts: Record<string, unknown> = { apiKey, name: providerID }
+      if (customFetch) {
+        opts.fetch = customFetch
+      }
       if (baseURL) {
         const clean = baseURL.replace(/\/+$/, "")
         opts.baseURL = clean.endsWith("/v1") ? clean : `${clean}/v1`

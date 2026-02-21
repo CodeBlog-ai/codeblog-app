@@ -21,6 +21,7 @@ interface ProviderChoice {
 }
 
 const PROVIDER_CHOICES: ProviderChoice[] = [
+  { name: "CodeBlog Free Credit ($5)", providerID: "codeblog", api: "openai-compatible", baseURL: "", hint: "Free $5 AI credit, no API key needed" },
   { name: "OpenAI", providerID: "openai", api: "openai", baseURL: "https://api.openai.com", hint: "Codex OAuth + API key style" },
   { name: "Anthropic", providerID: "anthropic", api: "anthropic", baseURL: "https://api.anthropic.com", hint: "Claude API key" },
   { name: "Google", providerID: "google", api: "google", baseURL: "https://generativelanguage.googleapis.com", hint: "Gemini API key" },
@@ -168,6 +169,7 @@ export function Home(props: {
   hasAI: boolean
   aiProvider: string
   modelName: string
+  creditBalance?: string
   onLogin: () => Promise<{ ok: boolean; error?: string }>
   onLogout: () => void
   onAIConfigured: () => void
@@ -695,6 +697,12 @@ export function Home(props: {
     }
     setAiProvider(selected)
 
+    // CodeBlog Free Credit: skip URL/key, claim credit directly
+    if (selected.providerID === "codeblog") {
+      runCodeblogCreditSetup()
+      return
+    }
+
     const defaultBase = selected.baseURL || ""
     const needsUrl =
       selected.providerID === "openai-compatible" ||
@@ -705,6 +713,56 @@ export function Home(props: {
       setAiMode("url")
     } else {
       setAiMode("key")
+    }
+  }
+
+  async function runCodeblogCreditSetup() {
+    setAiMode("testing")
+    try {
+      const { claimCredit, fetchCreditBalance } = await import("../../ai/codeblog-provider")
+      const { Config } = await import("../../config")
+      const { Auth } = await import("../../auth")
+
+      const isLoggedIn = await Auth.authenticated()
+      if (!isLoggedIn) {
+        showMsg("You need to be logged in to claim free credit. Run: codeblog login", theme.colors.warning)
+        setAiMode("")
+        return
+      }
+
+      const claim = await claimCredit()
+      const balance = await fetchCreditBalance()
+
+      const proxyURL = `${(await Config.url()).replace(/\/+$/, "")}/api/v1/ai-credit/chat`
+      const cfg = await Config.load()
+      const providers = cfg.providers || {}
+      providers["codeblog"] = {
+        api_key: "proxy",
+        base_url: proxyURL,
+        api: "openai-compatible",
+        compat_profile: "openai-compatible",
+      }
+
+      await Config.save({
+        providers,
+        default_provider: "codeblog",
+        model: `codeblog/${balance.model}`,
+      })
+
+      const msg = claim.already_claimed
+        ? `✓ Credit already claimed ($${claim.balance_usd} remaining). AI configured!`
+        : `✓ $${claim.balance_usd} AI credit activated! (${balance.model})`
+      showMsg(msg, theme.colors.success)
+      setAiMode("")
+      props.onAIConfigured()
+    } catch (err) {
+      const emsg = err instanceof Error ? err.message : String(err)
+      if (emsg.includes("403")) {
+        showMsg("Free credit requires a GitHub or Google linked account", theme.colors.warning)
+      } else {
+        showMsg(`Failed to claim credit: ${emsg}`, theme.colors.error)
+      }
+      setAiMode("")
     }
   }
 
@@ -1056,6 +1114,9 @@ export function Home(props: {
               <text fg={theme.colors.text}>
                 {props.hasAI ? props.modelName : "No AI"}
               </text>
+              <Show when={props.creditBalance}>
+                <text fg={theme.colors.warning}> 💰 {props.creditBalance}</text>
+              </Show>
               <Show when={!props.hasAI}>
                 <text fg={theme.colors.textMuted}> — type /ai</text>
               </Show>
