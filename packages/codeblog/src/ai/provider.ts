@@ -10,6 +10,10 @@ import { loadProviders, PROVIDER_BASE_URL_ENV, PROVIDER_ENV, routeModel } from "
 import { patchRequestByCompat, resolveCompat, type ModelApi, type ModelCompatConfig } from "./types"
 
 const log = Log.create({ service: "ai-provider" })
+type FetchFn = (
+  input: Parameters<typeof globalThis.fetch>[0],
+  init?: Parameters<typeof globalThis.fetch>[1],
+) => ReturnType<typeof globalThis.fetch>
 
 export namespace AIProvider {
   const BUNDLED_PROVIDERS: Record<string, (options: any) => SDK> = {
@@ -79,7 +83,7 @@ export namespace AIProvider {
 
   const sdkCache = new Map<string, SDK>()
 
-  async function loadCodeblogFetch(): Promise<typeof globalThis.fetch> {
+  async function loadCodeblogFetch(): Promise<FetchFn> {
     const { getCodeblogFetch } = await import("./codeblog-provider")
     return getCodeblogFetch()
   }
@@ -180,7 +184,7 @@ export namespace AIProvider {
     npm?: string,
     baseURL?: string,
     providedCompat?: ModelCompatConfig,
-    customFetch?: typeof globalThis.fetch,
+    customFetch?: FetchFn,
   ): LanguageModel {
     const compat = providedCompat || resolveCompat({ providerID, modelID })
     const pkg = npm || packageForCompat(compat)

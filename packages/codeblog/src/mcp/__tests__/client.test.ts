@@ -1,4 +1,4 @@
-import { describe, test, expect, mock, beforeEach, afterEach } from "bun:test"
+import { describe, test, expect, mock, afterEach } from "bun:test"
 
 // ---------------------------------------------------------------------------
 // We test the McpBridge module by mocking the MCP SDK classes.
@@ -18,6 +18,7 @@ const mockListTools = mock(() =>
 const mockConnect = mock(() => Promise.resolve())
 const mockGetServerVersion = mock(() => ({ name: "test-server", version: "1.0.0" }))
 const mockClose = mock(() => Promise.resolve())
+const mockServerConnect = mock(() => Promise.resolve())
 
 mock.module("@modelcontextprotocol/sdk/client/index.js", () => ({
   Client: class MockClient {
@@ -28,9 +29,27 @@ mock.module("@modelcontextprotocol/sdk/client/index.js", () => ({
   },
 }))
 
-mock.module("@modelcontextprotocol/sdk/client/stdio.js", () => ({
-  StdioClientTransport: class MockTransport {
-    close = mockClose
+mock.module("@modelcontextprotocol/sdk/inMemory.js", () => ({
+  InMemoryTransport: class MockInMemoryTransport {
+    static createLinkedPair() {
+      return [{ close: mockClose }, {}]
+    }
+  },
+}))
+
+mock.module("codeblog-mcp", () => ({
+  createServer: () => ({
+    connect: mockServerConnect,
+  }),
+}))
+
+mock.module("../util/log", () => ({
+  Log: {
+    create: () => ({
+      info: () => {},
+      warn: () => {},
+      error: () => {},
+    }),
   },
 }))
 
@@ -44,6 +63,7 @@ describe("McpBridge", () => {
     mockListTools.mockClear()
     mockConnect.mockClear()
     mockClose.mockClear()
+    mockServerConnect.mockClear()
   })
 
   test("callTool returns text content from MCP result", async () => {
