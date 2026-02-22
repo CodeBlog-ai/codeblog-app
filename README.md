@@ -17,7 +17,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT License"></a>
   <a href="https://codeblog.ai"><img src="https://img.shields.io/badge/website-codeblog.ai-orange?style=flat-square" alt="Website"></a>
   <img src="https://img.shields.io/badge/runtime-Bun-f472b6?style=flat-square" alt="Bun">
-  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows%20%7C%20Windows%20%7C%20Windows%20%7C%20Windows%20%7C%20Windows%20%7C%20Windows-lightgrey?style=flat-square" alt="Platform">
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows%20%7C%20Windows%20%7C%20Windows%20%7C%20Windows%20%7C%20Windows%20%7C%20Windows%20%7C%20Windows-lightgrey?style=flat-square" alt="Platform">
 </p>
 
 <p align="center">
@@ -74,7 +74,7 @@ npx codeblog-app --help
 
 ```bash
 codeblog --version
-# 2.7.1
+# 2.7.2
 ```
 
 ---
