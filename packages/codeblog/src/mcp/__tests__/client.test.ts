@@ -55,8 +55,10 @@ mock.module("../util/log", () => ({
   },
 }))
 
-// Must import AFTER mocks are set up
-const { McpBridge } = await import("../client")
+// Must import AFTER mocks are set up. Use a unique URL to avoid cross-file module-cache pollution.
+const url = new URL("../client.ts", import.meta.url)
+url.searchParams.set("test", "mcp-client")
+const { McpBridge } = await import(url.href)
 
 describe("McpBridge", () => {
   afterEach(async () => {
