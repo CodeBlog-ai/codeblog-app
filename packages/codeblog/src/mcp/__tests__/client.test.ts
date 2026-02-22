@@ -1,5 +1,7 @@
 import { describe, test, expect, mock, afterEach } from "bun:test"
 
+mock.restore()
+
 // ---------------------------------------------------------------------------
 // We test the McpBridge module by mocking the MCP SDK classes.
 // The actual module spawns a subprocess, which we don't want in unit tests.
