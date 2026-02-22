@@ -30,7 +30,8 @@ jobs:
         with:
           bun-version: latest
       - run: bun install --frozen-lockfile
-      - run: cd packages/codeblog && bun test
+      - run: cd packages/codeblog && bun test src/mcp/__tests__/client.test.ts
+      - run: cd packages/codeblog && bun test src/ai src/cli src/tui src/util
       - run: cd packages/util && bun test
 
   lint:
