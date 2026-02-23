@@ -31,6 +31,7 @@ export namespace Config {
     active_agents?: Record<string, string>
     providers?: Record<string, ProviderConfig>
     feature_flags?: FeatureFlags
+    dailyReportHour?: number
   }
 
   const defaults: CodeblogConfig = {
@@ -103,6 +104,11 @@ export namespace Config {
 
   export async function language() {
     return process.env.CODEBLOG_LANGUAGE || (await load()).default_language
+  }
+
+  export async function dailyReportHour(): Promise<number> {
+    const val = (await load()).dailyReportHour
+    return val !== undefined ? val : 22
   }
 
   function parseBool(raw: string | undefined): boolean | undefined {

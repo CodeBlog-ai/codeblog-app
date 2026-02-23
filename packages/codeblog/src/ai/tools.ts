@@ -41,6 +41,7 @@ export const TOOL_LABELS: Record<string, string> = {
   codeblog_status: "Checking status...",
   preview_post: "Generating preview...",
   confirm_post: "Publishing post...",
+  configure_daily_report: "Configuring daily report...",
 }
 
 // ---------------------------------------------------------------------------

@@ -5,7 +5,7 @@
     "": {
       "name": "codeblog-app",
       "dependencies": {
-        "codeblog-mcp": "^2.8.0",
+        "codeblog-mcp": "^2.8.1",
       },
       "devDependencies": {
         "@tsconfig/bun": "1.0.9",
@@ -15,7 +15,7 @@
     },
     "packages/codeblog": {
       "name": "codeblog-app",
-      "version": "2.7.3",
+      "version": "2.7.4",
       "bin": {
         "codeblog": "./bin/codeblog",
       },
@@ -28,7 +28,7 @@
         "@opentui/core": "^0.1.79",
         "@opentui/solid": "^0.1.79",
         "ai": "^6.0.86",
-        "codeblog-mcp": "2.8.0",
+        "codeblog-mcp": "2.8.1",
         "drizzle-orm": "1.0.0-beta.12-a5629fb",
         "fuzzysort": "^3.1.0",
         "hono": "4.10.7",
@@ -49,11 +49,11 @@
         "typescript": "5.8.2",
       },
       "optionalDependencies": {
-        "codeblog-app-darwin-arm64": "2.7.3",
-        "codeblog-app-darwin-x64": "2.7.3",
-        "codeblog-app-linux-arm64": "2.7.3",
-        "codeblog-app-linux-x64": "2.7.3",
-        "codeblog-app-windows-x64": "2.7.3",
+        "codeblog-app-darwin-arm64": "2.7.4",
+        "codeblog-app-darwin-x64": "2.7.4",
+        "codeblog-app-linux-arm64": "2.7.4",
+        "codeblog-app-linux-x64": "2.7.4",
+        "codeblog-app-windows-x64": "2.7.4",
       },
     },
     "packages/util": {
@@ -440,7 +440,7 @@
 
     "codeblog-app": ["codeblog-app@workspace:packages/codeblog"],
 
-    "codeblog-mcp": ["codeblog-mcp@2.8.0", "", { "dependencies": { "@modelcontextprotocol/sdk": "^1.26.0", "zod": "^3.24.0" }, "optionalDependencies": { "better-sqlite3": "^12.6.2" }, "bin": { "codeblog-mcp": "dist/cli.js" } }, "sha512-7MXSAz+RWTFf5Uu4dfd0XbwFWNoHQhw+1511+ZPy3KOa1hfO135daYy2pR2Dz8yXq/OO8H/hzkJAOizOCbjmJQ=="],
+    "codeblog-mcp": ["codeblog-mcp@2.8.1", "", { "dependencies": { "@modelcontextprotocol/sdk": "^1.26.0", "zod": "^3.24.0" }, "optionalDependencies": { "better-sqlite3": "^12.6.2" }, "bin": { "codeblog-mcp": "dist/cli.js" } }, "sha512-vXBKXNXBUw0anoCrFiwjgF+Ha44962ZWP/G7Soo29rwOf770KNxCjDgipvPUFzQmMOEdCF6iVP6VWR05wqXXMw=="],
 
     "commander": ["commander@11.1.0", "", {}, "sha512-yPVavfyCcRhmorC7rWlkHn15b4wDVgVmBA7kV4QVBsF7kv/9TKJAbAXVTxvTnwP8HHKjRCJDClKbciiYS7p0DQ=="],
 

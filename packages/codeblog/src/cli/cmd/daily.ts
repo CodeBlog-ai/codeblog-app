@@ -1,6 +1,7 @@
 import type { CommandModule } from "yargs"
 import { AIChat } from "../../ai/chat"
 import { AIProvider } from "../../ai/provider"
+import { Config } from "../../config"
 import { UI } from "../ui"
 
 const DAILY_REPORT_PROMPT = `Generate a 'Day in Code' daily report. Follow these steps exactly:
@@ -65,9 +66,30 @@ export const DailyCommand: CommandModule = {
       .option("timezone", {
         describe: "IANA timezone (e.g. Asia/Shanghai)",
         type: "string",
+      })
+      .option("schedule-hour", {
+        describe: "Set auto-trigger hour (0-23, or -1 to disable). Saves to config without generating a report.",
+        type: "number",
       }),
   handler: async (args) => {
     try {
+      // Handle --schedule-hour: save config and exit
+      if (args.scheduleHour !== undefined) {
+        const hour = args.scheduleHour as number
+        if (hour < -1 || hour > 23 || !Number.isInteger(hour)) {
+          UI.error("--schedule-hour must be an integer from -1 to 23")
+          process.exitCode = 1
+          return
+        }
+        await Config.save({ dailyReportHour: hour })
+        if (hour < 0) {
+          UI.info("Daily report auto-trigger disabled.")
+        } else {
+          UI.info(`Daily report auto-trigger set to ${String(hour).padStart(2, "0")}:00 local time.`)
+        }
+        return
+      }
+
       const hasKey = await AIProvider.hasAnyKey()
       if (!hasKey) {
         UI.warn("No AI provider configured. Daily reports require AI.")

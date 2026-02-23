@@ -437,7 +437,6 @@ export function Home(props: {
   // Every 30 minutes, check if it's past the configured hour (default 22:00)
   // and no daily report has been generated today. If so, auto-trigger.
   {
-    const DAILY_REPORT_HOUR = 22 // 10 PM local time
     const CHECK_INTERVAL_MS = 30 * 60 * 1000 // 30 minutes
     const DAILY_REPORT_MAX_ATTEMPTS = 3
     const DAILY_REPORT_RETRY_COOLDOWN_MS = 60 * 60 * 1000 // 1 hour
@@ -489,9 +488,13 @@ export function Home(props: {
 
       const now = new Date()
       try {
+        const { Config } = await import("../../config")
+        const reportHour = await Config.dailyReportHour()
+        if (reportHour < 0) return // auto-trigger disabled
+
         const today = localDateKey(now)
         if (dailyReportCompletedDate === today) return
-        if (now.getHours() < DAILY_REPORT_HOUR) return
+        if (now.getHours() < reportHour) return
 
         const currentStatus = await fetchDailyReportStatus(today)
         if (currentStatus === "exists") {
