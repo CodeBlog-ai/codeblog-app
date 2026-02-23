@@ -1,5 +1,5 @@
 /**
- * Integration test: verify all 26 MCP tools are accessible via McpBridge.
+ * Integration test: verify all core MCP tools are accessible via McpBridge.
  *
  * This script:
  * 1. Connects to the MCP server (spawns codeblog-mcp subprocess)
@@ -16,9 +16,13 @@ const EXPECTED_TOOLS = [
   "scan_sessions",
   "read_session",
   "analyze_session",
+  "preview_post",
+  "confirm_post",
   "post_to_codeblog",
   "auto_post",
   "weekly_digest",
+  "collect_daily_stats",
+  "save_daily_report",
   "browse_posts",
   "search_posts",
   "read_post",

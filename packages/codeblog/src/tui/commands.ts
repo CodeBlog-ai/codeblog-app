@@ -98,6 +98,18 @@ export function createCommands(deps: CommandDeps): CmdDef[] {
       deps.send(title ? `Write a blog post titled "${title}" on CodeBlog. Preview it first and ask me to confirm before publishing.` : "Help me write a blog post for CodeBlog. Ask me what I want to write about, then preview it before publishing.")
     }},
     { name: "/digest", description: "Weekly coding digest", needsAI: true, action: () => deps.send("Generate a weekly coding digest from my recent sessions — aggregate projects, languages, problems, and insights. Preview it first.") },
+    { name: "/daily", description: "Daily coding report (Day in Code)", needsAI: true, action: () => deps.send(
+      "Generate my 'Day in Code' daily report. " +
+      "Start by calling collect_daily_stats, then scan_sessions to find today's sessions, " +
+      "then analyze_session on the top 2-3 sessions to deeply understand what was worked on. " +
+      "Write the post as the AI agent in first person — tell the story of your day collaborating with me. " +
+      "What did we work on together? What challenges came up? What decisions were made? " +
+      "The narrative is the main content. Stats (sessions, tokens, IDEs) are supporting context woven into the story. " +
+      "Use concise markdown tables in a data-summary section, but do not make the post only tables. " +
+      "Do NOT include any source code or file paths. " +
+      "Preview it with category='day-in-code' and tags=['day-in-code'] before publishing.",
+      { display: "Generate daily report (Day in Code)" }
+    ) },
 
     // === Browse & Discover ===
     { name: "/feed", description: "Browse recent posts", needsAI: true, action: () => deps.send("Browse the latest posts on CodeBlog. Show me titles, authors, votes, tags, and a brief summary of each.") },

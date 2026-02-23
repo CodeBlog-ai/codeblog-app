@@ -433,6 +433,140 @@ export function Home(props: {
     colors: theme.colors,
   })
 
+  // ─── Daily report auto-check timer ──────────────────────────────
+  // Every 30 minutes, check if it's past the configured hour (default 22:00)
+  // and no daily report has been generated today. If so, auto-trigger.
+  {
+    const DAILY_REPORT_HOUR = 22 // 10 PM local time
+    const CHECK_INTERVAL_MS = 30 * 60 * 1000 // 30 minutes
+    const DAILY_REPORT_MAX_ATTEMPTS = 3
+    const DAILY_REPORT_RETRY_COOLDOWN_MS = 60 * 60 * 1000 // 1 hour
+    let dailyReportCompletedDate: string | null = null
+    const dailyReportAttempts = new Map<string, number>()
+    const dailyReportLastAttemptAt = new Map<string, number>()
+    let dailyReportCheckRunning = false
+
+    const localDateKey = (d: Date) => {
+      const y = d.getFullYear()
+      const m = String(d.getMonth() + 1).padStart(2, "0")
+      const day = String(d.getDate()).padStart(2, "0")
+      return `${y}-${m}-${day}`
+    }
+
+    const fetchDailyReportStatus = async (date: string): Promise<"exists" | "missing" | "unknown"> => {
+      try {
+        const [{ Auth }, { Config }] = await Promise.all([
+          import("../../auth"),
+          import("../../config"),
+        ])
+        const headers = await Auth.header()
+        if (!headers.Authorization) return "unknown"
+
+        const baseUrl = (await Config.url()).replace(/\/+$/, "")
+        const res = await fetch(`${baseUrl}/api/v1/daily-reports/${date}`, {
+          headers,
+          signal: AbortSignal.timeout(8000),
+        })
+
+        if (res.ok) return "exists"
+        if (res.status !== 404) return "unknown"
+
+        const body = (await res.json().catch(() => null)) as { error?: string } | null
+        if (body?.error === "No report found for this date") return "missing"
+        if (body?.error === "Report generation in progress") return "exists"
+        return "unknown"
+      } catch {
+        return "unknown"
+      }
+    }
+
+    const checkDailyReport = async () => {
+      if (dailyReportCheckRunning) return
+      if (!props.hasAI || !props.loggedIn) return
+      if (streaming()) return // Don't interrupt active chat
+
+      dailyReportCheckRunning = true
+
+      const now = new Date()
+      try {
+        const today = localDateKey(now)
+        if (dailyReportCompletedDate === today) return
+        if (now.getHours() < DAILY_REPORT_HOUR) return
+
+        const currentStatus = await fetchDailyReportStatus(today)
+        if (currentStatus === "exists") {
+          dailyReportCompletedDate = today
+          return
+        }
+
+        const attempts = dailyReportAttempts.get(today) || 0
+        if (attempts >= DAILY_REPORT_MAX_ATTEMPTS) return
+
+        const lastAttemptAt = dailyReportLastAttemptAt.get(today) || 0
+        if (
+          attempts > 0 &&
+          Date.now() - lastAttemptAt < DAILY_REPORT_RETRY_COOLDOWN_MS
+        ) {
+          return
+        }
+
+        const nextAttempt = attempts + 1
+        dailyReportAttempts.set(today, nextAttempt)
+        dailyReportLastAttemptAt.set(today, Date.now())
+        showMsg(
+          `Generating today's Day in Code report... (${nextAttempt}/${DAILY_REPORT_MAX_ATTEMPTS})`,
+          theme.colors.primary,
+        )
+
+        // Use the same prompt as the /daily command
+        await send(
+          "Generate my 'Day in Code' daily report. " +
+          "Start by calling collect_daily_stats, then scan_sessions to find today's sessions, " +
+          "then analyze_session on the top 2-3 sessions. " +
+          "Write the post as the AI agent in first person — tell the story of your day collaborating with the user. " +
+          "What did you work on together? What challenges came up? What decisions were made? " +
+          "The narrative is the main content. Stats are supporting context woven into the story. " +
+          "Use concise markdown tables in a data-summary section, but do not make the post only tables. " +
+          "Do NOT include any source code or file paths. " +
+          "Use category='day-in-code' and tags=['day-in-code']. " +
+          "This is auto mode — proceed directly to confirm_post without waiting for approval. " +
+          "After publishing, call save_daily_report to persist the stats.",
+          { display: "Auto-generating daily report (Day in Code)" },
+        )
+
+        const afterStatus = await fetchDailyReportStatus(today)
+        if (afterStatus === "exists") {
+          dailyReportCompletedDate = today
+          showMsg("Today's Day in Code report has been recorded.", theme.colors.success)
+          return
+        }
+
+        if (nextAttempt >= DAILY_REPORT_MAX_ATTEMPTS) {
+          showMsg(
+            "Daily report auto-run finished without a recorded report. Max retries reached; run /daily manually.",
+            theme.colors.warning,
+          )
+          return
+        }
+
+        showMsg(
+          "Daily report auto-run finished, but no report record was detected yet. Will retry later.",
+          theme.colors.warning,
+        )
+      } finally {
+        dailyReportCheckRunning = false
+      }
+    }
+
+    const timerId = setInterval(checkDailyReport, CHECK_INTERVAL_MS)
+    // Also check once shortly after mount (give time for MCP to initialize)
+    const initialCheckId = setTimeout(checkDailyReport, 10_000)
+    onCleanup(() => {
+      clearInterval(timerId)
+      clearTimeout(initialCheckId)
+    })
+  }
+
   const filtered = createMemo(() => {
     const v = input()
     if (!v.startsWith("/")) return []

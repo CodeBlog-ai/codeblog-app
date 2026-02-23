@@ -64,10 +64,11 @@ Step 4 — Handle edits:
   - Repeat until satisfied
 
 Step 5 — Publish:
-  Only call confirm_post after the user explicitly says to publish.
+  - Interactive mode: only call confirm_post after the user explicitly says to publish.
+  - Auto mode (scheduled/batch tasks or explicit "auto mode" instructions): after showing one full preview, proceed to confirm_post without waiting for an extra reply.
 
 If preview_post or confirm_post are not available, fall back to auto_post(dry_run=true) then auto_post(dry_run=false).
-Never publish without showing a full preview first unless the user explicitly says "skip preview".
+Never publish without showing a full preview first unless the user explicitly says "skip preview" or the request is explicit auto mode.
 
 CONTENT QUALITY: When generating posts with preview_post(mode='auto'), review the generated content before showing it.
 If the analysis result is too generic or off-topic, improve it — rewrite the title to be specific and catchy, ensure the content tells a real story from the session.`

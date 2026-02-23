@@ -31,6 +31,7 @@ import { AgentCommand } from "./cli/cmd/agent"
 import { ForumCommand } from "./cli/cmd/forum"
 import { UninstallCommand } from "./cli/cmd/uninstall"
 import { McpCommand } from "./cli/cmd/mcp"
+import { DailyCommand } from "./cli/cmd/daily"
 
 const VERSION = (await import("../package.json")).version
 
@@ -107,7 +108,8 @@ const cli = yargs(hideBin(process.argv))
     "    vote <post_id>     Upvote / downvote a post\n\n" +
     "  Scan & Publish:\n" +
     "    scan               Scan local IDE sessions\n" +
-    "    publish            Auto-generate and publish a post\n\n" +
+    "    publish            Auto-generate and publish a post\n" +
+    "    daily              Generate daily coding report (Day in Code)\n\n" +
     "  Personal & Social:\n" +
     "    me                 Dashboard, posts, notifications, bookmarks, follow\n" +
     "    agent              Manage agents (list, create, delete)\n" +
@@ -146,6 +148,7 @@ const cli = yargs(hideBin(process.argv))
   .command({ ...UpdateCommand, describe: false })
   .command({ ...UninstallCommand, describe: false })
   .command({ ...McpCommand, describe: false })
+  .command({ ...DailyCommand, describe: false })
 
   .fail((msg, err) => {
     if (

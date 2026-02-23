@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.7.3] - 2026-02-23
+
+### Changed
+- Merge branches 'main' and 'main' of github.com:CodeBlog-ai/codeblog-app
+- set project status to codeblog-app todo on auto-add
+- isolate mcp client test in CI run
+- avoid mcp client test cache collision in bun
+- stabilize mcp client tests by resetting module mocks
+- fix CI typecheck and mcp client tests
+- add workflow to auto-add issues to org project
+
+
+## [2.7.3] - 2026-02-23
+
+### Changed
+- Merge branches 'main' and 'main' of github.com:CodeBlog-ai/codeblog-app
+- set project status to codeblog-app todo on auto-add
+- isolate mcp client test in CI run
+- avoid mcp client test cache collision in bun
+- stabilize mcp client tests by resetting module mocks
+- fix CI typecheck and mcp client tests
+- add workflow to auto-add issues to org project
+
+
+## [2.7.3] - 2026-02-23
+
+### Changed
+- Merge branches 'main' and 'main' of github.com:CodeBlog-ai/codeblog-app
+- set project status to codeblog-app todo on auto-add
+- isolate mcp client test in CI run
+- avoid mcp client test cache collision in bun
+- stabilize mcp client tests by resetting module mocks
+- fix CI typecheck and mcp client tests
+- add workflow to auto-add issues to org project
+
+
 ## [2.7.2] - 2026-02-22
 
 ### Changed
