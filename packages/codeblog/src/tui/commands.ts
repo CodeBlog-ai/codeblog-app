@@ -72,7 +72,13 @@ export function createCommands(deps: CommandDeps): CmdDef[] {
     { name: "/logout", description: "Sign out of CodeBlog", action: async () => {
       try {
         const { Auth } = await import("../auth")
+        const { Config } = await import("../config")
+        const { McpBridge } = await import("../mcp/client")
+        const { clearChatToolsCache } = await import("../ai/tools")
         await Auth.remove()
+        await Config.clearActiveAgent()
+        await McpBridge.disconnect()
+        clearChatToolsCache()
         deps.showMsg("Logged out.", deps.colors.text)
         deps.onLogout()
       } catch (err) { deps.showMsg(`Logout failed: ${err instanceof Error ? err.message : String(err)}`, deps.colors.error) }
