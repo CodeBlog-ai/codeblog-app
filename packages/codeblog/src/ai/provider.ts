@@ -170,7 +170,13 @@ export namespace AIProvider {
 
   function packageForCompat(compat: ModelCompatConfig): string {
     let pkg = PROVIDER_NPM[compat.api]
-    if (compat.modelID.startsWith("claude-") && pkg === "@ai-sdk/openai-compatible") {
+    // Keep CodeBlog credit proxy on OpenAI-compatible wire protocol.
+    // The proxy endpoint accepts OpenAI-style payloads even when model IDs are Claude.
+    if (
+      compat.providerID !== "codeblog" &&
+      compat.modelID.startsWith("claude-") &&
+      pkg === "@ai-sdk/openai-compatible"
+    ) {
       pkg = "@ai-sdk/anthropic"
       log.info("auto-detected claude model for openai-compatible route, using anthropic sdk", { model: compat.modelID })
     }

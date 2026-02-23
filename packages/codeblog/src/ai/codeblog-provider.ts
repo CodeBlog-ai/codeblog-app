@@ -44,12 +44,27 @@ type FetchFn = (
 ) => ReturnType<typeof globalThis.fetch>
 
 export async function getCodeblogFetch(): Promise<FetchFn> {
+  const cfg = await Config.load()
+  const proxyURL = (cfg.providers?.codeblog?.base_url || `${(await Config.url()).replace(/\/+$/, "")}/api/v1/ai-credit/chat`).replace(/\/+$/, "")
+
   return async (input, init) => {
     const headers = new Headers(init?.headers)
     const token = await Auth.get()
     if (token) {
       headers.set("Authorization", `Bearer ${token.value}`)
     }
-    return globalThis.fetch(input, { ...init, headers })
+
+    // The CodeBlog credit proxy is a single endpoint: /api/v1/ai-credit/chat
+    // AI SDK providers may append /chat/completions or /v1/messages; normalize all to proxyURL.
+    const url = new URL(proxyURL)
+    const inputURL =
+      typeof input === "string"
+        ? new URL(input)
+        : input instanceof URL
+          ? input
+          : new URL(input.url)
+    if (inputURL.search) url.search = inputURL.search
+
+    return globalThis.fetch(url, { ...init, headers })
   }
 }

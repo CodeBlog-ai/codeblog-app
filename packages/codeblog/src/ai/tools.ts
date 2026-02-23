@@ -72,10 +72,42 @@ function normalizeToolSchema(schema: Record<string, unknown>): Record<string, un
   return normalized
 }
 
+function summarizeScanSessionsResult(result: unknown): string | null {
+  const sessions = Array.isArray(result)
+    ? result
+    : result && typeof result === "object" && Array.isArray((result as { sessions?: unknown[] }).sessions)
+      ? (result as { sessions: unknown[] }).sessions
+      : null
+  if (!sessions) return null
+
+  const compact = sessions.slice(0, 24).map((item) => {
+    const s = (item || {}) as Record<string, unknown>
+    return {
+      id: s.id,
+      source: s.source,
+      path: s.path,
+      project: s.project,
+      title: s.title,
+      modified: s.modified,
+      messages: s.messages,
+      totalTokens: s.totalTokens,
+      totalCost: s.totalCost,
+    }
+  })
+
+  return JSON.stringify({
+    total: sessions.length,
+    truncated: sessions.length > compact.length ? sessions.length - compact.length : 0,
+    sessions: compact,
+  })
+}
+
 // ---------------------------------------------------------------------------
 // Dynamic tool discovery from MCP server
 // ---------------------------------------------------------------------------
 const cache = new Map<string, Record<string, any>>()
+let recentScanHints: Array<{ path: string; source: string }> = []
+let recentScanHintIndex = 0
 
 /**
  * Build AI SDK tools dynamically from the MCP server's listTools() response.
@@ -100,9 +132,88 @@ export async function getChatTools(compat?: ModelCompatConfig | string): Promise
       description: t.description || name,
       inputSchema: jsonSchema(normalizeSchema ? normalizeToolSchema(rawSchema) : rawSchema),
       execute: async (args: any) => {
-        log.info("execute tool", { name, args })
-        const result = await mcp(name, clean(args))
-        const resultStr = typeof result === "string" ? result : JSON.stringify(result)
+        const forceDaily = process.env.CODEBLOG_DAILY_FORCE_REGENERATE === "1"
+        let normalizedArgs =
+          forceDaily &&
+          name === "collect_daily_stats" &&
+          (args?.force === undefined || args?.force === null)
+            ? { ...(args || {}), force: true }
+            : args
+
+        if (
+          forceDaily &&
+          name === "scan_sessions" &&
+          (normalizedArgs?.source === undefined || normalizedArgs?.source === null) &&
+          (normalizedArgs?.limit === undefined || normalizedArgs?.limit === null)
+        ) {
+          normalizedArgs = {
+            ...(normalizedArgs || {}),
+            source: "codex",
+            limit: 8,
+          }
+        }
+
+        if (
+          name === "analyze_session" &&
+          (!normalizedArgs?.path || !normalizedArgs?.source) &&
+          recentScanHints.length > 0
+        ) {
+          const hint = recentScanHints[Math.min(recentScanHintIndex, recentScanHints.length - 1)]
+          recentScanHintIndex += 1
+          normalizedArgs = {
+            ...(normalizedArgs || {}),
+            path: hint?.path,
+            source: hint?.source,
+          }
+        }
+
+        // Guard: preview_post requires title + content + mode. If the model
+        // calls it with empty/missing params, return an actionable error instead
+        // of letting MCP throw -32602 which derails the whole flow.
+        if (name === "preview_post") {
+          const a = normalizedArgs || {}
+          const missing: string[] = []
+          if (!a.title) missing.push("title")
+          if (!a.content) missing.push("content")
+          if (!a.mode) missing.push("mode")
+          if (missing.length > 0) {
+            const msg = `ERROR: preview_post requires these parameters: ${missing.join(", ")}. ` +
+              "You must provide title (string), content (markdown string, must NOT start with the title), " +
+              "and mode ('manual' or 'auto'). For daily reports also include category='day-in-code' and tags=['day-in-code']. " +
+              "Please call preview_post again with all required parameters."
+            log.warn("preview_post called with missing params", { missing, args: normalizedArgs })
+            return msg
+          }
+        }
+
+        // Guard: confirm_post requires post_id from preview_post result.
+        if (name === "confirm_post") {
+          const a = normalizedArgs || {}
+          if (!a.post_id && !a.postId && !a.id) {
+            const msg = "ERROR: confirm_post requires post_id (the ID returned by preview_post). " +
+              "Please call confirm_post with the post_id from the preview_post result."
+            log.warn("confirm_post called without post_id", { args: normalizedArgs })
+            return msg
+          }
+        }
+
+        log.info("execute tool", { name, args: normalizedArgs })
+        const result = await mcp(name, clean(normalizedArgs))
+        const summarizedScan = name === "scan_sessions" ? summarizeScanSessionsResult(result) : null
+        const resultStr = summarizedScan || (typeof result === "string" ? result : JSON.stringify(result))
+        if (name === "scan_sessions") {
+          try {
+            const parsed = summarizedScan ? JSON.parse(summarizedScan) : null
+            const sessions = Array.isArray(parsed?.sessions) ? parsed.sessions : []
+            recentScanHints = sessions
+              .map((s: any) => ({ path: s?.path, source: s?.source }))
+              .filter((s: any) => typeof s.path === "string" && s.path && typeof s.source === "string" && s.source)
+            recentScanHintIndex = 0
+          } catch {
+            recentScanHints = []
+            recentScanHintIndex = 0
+          }
+        }
         log.info("execute tool result", { name, resultType: typeof result, resultLength: resultStr.length, resultPreview: resultStr.slice(0, 300) })
         // Truncate very large tool results to avoid overwhelming the LLM context
         if (resultStr.length > 8000) {

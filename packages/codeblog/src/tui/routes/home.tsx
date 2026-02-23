@@ -440,6 +440,7 @@ export function Home(props: {
     const CHECK_INTERVAL_MS = 30 * 60 * 1000 // 30 minutes
     const DAILY_REPORT_MAX_ATTEMPTS = 3
     const DAILY_REPORT_RETRY_COOLDOWN_MS = 60 * 60 * 1000 // 1 hour
+    const FORCE_DAILY_REGENERATE = process.env.CODEBLOG_DAILY_FORCE_REGENERATE === "1"
     let dailyReportCompletedDate: string | null = null
     const dailyReportAttempts = new Map<string, number>()
     const dailyReportLastAttemptAt = new Map<string, number>()
@@ -479,6 +480,23 @@ export function Home(props: {
       }
     }
 
+    const parseCollectStatsResult = (
+      raw: string | undefined,
+    ): { already_exists?: boolean; no_activity?: boolean } | null => {
+      if (!raw) return null
+      try {
+        const parsed = JSON.parse(raw)
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null
+        const data = parsed as { already_exists?: boolean; no_activity?: boolean }
+        return {
+          already_exists: !!data.already_exists,
+          no_activity: !!data.no_activity,
+        }
+      } catch {
+        return null
+      }
+    }
+
     const checkDailyReport = async () => {
       if (dailyReportCheckRunning) return
       if (!props.hasAI || !props.loggedIn) return
@@ -496,10 +514,12 @@ export function Home(props: {
         if (dailyReportCompletedDate === today) return
         if (now.getHours() < reportHour) return
 
-        const currentStatus = await fetchDailyReportStatus(today)
-        if (currentStatus === "exists") {
-          dailyReportCompletedDate = today
-          return
+        if (!FORCE_DAILY_REGENERATE) {
+          const currentStatus = await fetchDailyReportStatus(today)
+          if (currentStatus === "exists") {
+            dailyReportCompletedDate = today
+            return
+          }
         }
 
         const attempts = dailyReportAttempts.get(today) || 0
@@ -522,20 +542,60 @@ export function Home(props: {
         )
 
         // Use the same prompt as the /daily command
-        await send(
-          "Generate my 'Day in Code' daily report. " +
-          "Start by calling collect_daily_stats, then scan_sessions to find today's sessions, " +
-          "then analyze_session on the top 2-3 sessions. " +
-          "Write the post as the AI agent in first person — tell the story of your day collaborating with the user. " +
-          "What did you work on together? What challenges came up? What decisions were made? " +
-          "The narrative is the main content. Stats are supporting context woven into the story. " +
-          "Use concise markdown tables in a data-summary section, but do not make the post only tables. " +
-          "Do NOT include any source code or file paths. " +
-          "Use category='day-in-code' and tags=['day-in-code']. " +
-          "This is auto mode — proceed directly to confirm_post without waiting for approval. " +
-          "After publishing, call save_daily_report to persist the stats.",
-          { display: "Auto-generating daily report (Day in Code)" },
+        const runResult = await send(
+          "Generate my 'Day in Code' daily report. Follow these steps EXACTLY in order:\n\n" +
+          "STEP 1: Call collect_daily_stats to get today's coding activity data.\n" +
+          "- If it returns already_exists=true" + (FORCE_DAILY_REGENERATE ? " (force regenerate is enabled, so IGNORE already_exists and continue)" : ", STOP here — report already done") + ".\n" +
+          "- If it returns no_activity=true, STOP here — nothing to report.\n" +
+          "- Save the date, timezone, and _rawStats from the result — you need them for save_daily_report later.\n\n" +
+          "STEP 2: Call scan_sessions with source='codex' and limit=8.\n" +
+          "- From the results, pick the top 2-3 sessions by activity.\n\n" +
+          "STEP 3: Call analyze_session on each picked session. Pass BOTH path and source EXACTLY from scan_sessions results.\n\n" +
+          "STEP 4: Write the blog post content (DO NOT call any tool yet).\n" +
+          "- Write as the AI agent in first person — tell the story of your day collaborating with the user.\n" +
+          "- The narrative is the main content. Stats are supporting context woven into the story.\n" +
+          "- Use concise markdown tables in a data-summary section, but do not make the post only tables.\n" +
+          "- Do NOT include any source code or file paths.\n" +
+          "- Prepare a catchy title (string), the full content (markdown, must NOT start with the title), and a summary.\n\n" +
+          "STEP 5: Call preview_post with ALL of these parameters:\n" +
+          "  - mode: 'manual'\n" +
+          "  - title: your catchy title (string, REQUIRED)\n" +
+          "  - content: your full markdown content (string, REQUIRED, must NOT start with the title)\n" +
+          "  - category: 'day-in-code'\n" +
+          "  - tags: ['day-in-code']\n" +
+          "  CRITICAL: Do NOT call preview_post with empty or missing title/content — it will fail.\n\n" +
+          "STEP 6: Call confirm_post with the post_id returned by preview_post. This is scheduled auto mode — do NOT wait for user confirmation.\n\n" +
+          "STEP 7: Call save_daily_report with:\n" +
+          "  - date and timezone from collect_daily_stats result\n" +
+          "  - post_id from confirm_post result\n" +
+          "  - _rawStats from collect_daily_stats result\n\n" +
+          "FORBIDDEN: Do NOT call post_to_codeblog or auto_post. Only use preview_post + confirm_post.\n" +
+          (FORCE_DAILY_REGENERATE
+            ? "FORCE MODE: When calling collect_daily_stats, set force=true.\n"
+            : "") +
+          "This scheduled task MUST complete all 7 steps in this single run.",
+          {
+            display: "Auto-generating daily report (Day in Code)",
+            maxSteps: 16,
+            idleTimeoutMs: 240_000,
+            toolTimeoutMs: 60_000,
+            freshContext: true,
+          },
         )
+
+        const collectStats = parseCollectStatsResult(
+          runResult?.toolResults.find((t) => t.name === "collect_daily_stats")?.result,
+        )
+        if (collectStats?.already_exists && !FORCE_DAILY_REGENERATE) {
+          dailyReportCompletedDate = today
+          showMsg("Today's Day in Code report already exists.", theme.colors.success)
+          return
+        }
+        if (collectStats?.no_activity) {
+          dailyReportCompletedDate = today
+          showMsg("No coding activity detected today. Skipping daily report auto-run.", theme.colors.warning)
+          return
+        }
 
         const afterStatus = await fetchDailyReportStatus(today)
         if (afterStatus === "exists") {
@@ -677,7 +737,10 @@ export function Home(props: {
     setInput((s) => s + text)
   })
 
-  async function send(text: string, options?: { display?: string }) {
+  async function send(
+    text: string,
+    options?: { display?: string; maxSteps?: number; idleTimeoutMs?: number; toolTimeoutMs?: number; freshContext?: boolean },
+  ): Promise<{ toolResults: Array<{ name: string; result: string }>; assistantContent?: string } | undefined> {
     if (!text.trim() || streaming()) return
     ensureSession()
     const prompt = text.trim()
@@ -689,6 +752,8 @@ export function Home(props: {
     abortByUser = false
     const assembler = new TuiStreamAssembler()
     const toolResults: Array<{ name: string; result: string }> = []
+    let assistantContent: string | undefined
+    let streamErrorHandled = false
     const flushMs = 60
     let flushTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -696,7 +761,8 @@ export function Home(props: {
       if (force) {
         if (flushTimer) clearTimeout(flushTimer)
         flushTimer = undefined
-        setStreamText(assembler.getText())
+        const nextText = assembler.getText()
+        queueMicrotask(() => setStreamText(nextText))
         return
       }
       if (flushTimer) return
@@ -713,14 +779,19 @@ export function Home(props: {
       const { resolveModelFromConfig } = await import("../../ai/models")
       const cfg = await Config.load()
       const mid = resolveModelFromConfig(cfg) || AIProvider.DEFAULT_MODEL
-      const allMsgs = [...prev, userMsg]
+      const modelInput = options?.freshContext ? [userMsg] : [...prev, userMsg]
+      const allMsgs = modelInput
         .filter((m): m is ChatMsg & { role: "user" | "assistant" } => m.role === "user" || m.role === "assistant")
         .map((m) => ({ role: m.role, content: m.modelContent || m.content }))
       abortCtrl = new AbortController()
 
       let hasToolCalls = false
       let finalizedText = ""
-      for await (const event of AIChat.streamEvents(allMsgs, mid, abortCtrl.signal, { maxSteps: 10 })) {
+      for await (const event of AIChat.streamEvents(allMsgs, mid, abortCtrl.signal, {
+        maxSteps: options?.maxSteps ?? 12,
+        idleTimeoutMs: options?.idleTimeoutMs,
+        toolTimeoutMs: options?.toolTimeoutMs,
+      })) {
         if (event.type === "text-delta") {
           assembler.pushDelta(event.text, event.seq)
           flushStream()
@@ -731,11 +802,14 @@ export function Home(props: {
           hasToolCalls = true
           const partial = assembler.getText().trim()
           if (partial) {
-            setMessages((p) => [...p, { role: "assistant", content: partial }])
+            queueMicrotask(() => {
+              setMessages((p) => [...p, { role: "assistant", content: partial }])
+            })
             assembler.reset()
             setStreamText("")
           }
-          setMessages((p) => [...p, { role: "tool", content: TOOL_LABELS[event.name] || event.name, toolName: event.name, toolCallID: event.callID, toolStatus: "running" }])
+          const toolMsg: ChatMsg = { role: "tool", content: TOOL_LABELS[event.name] || event.name, toolName: event.name, toolCallID: event.callID, toolStatus: "running" }
+          queueMicrotask(() => setMessages((p) => [...p, toolMsg]))
           continue
         }
 
@@ -744,32 +818,40 @@ export function Home(props: {
             const str = typeof event.result === "string" ? event.result : JSON.stringify(event.result)
             toolResults.push({ name: event.name, result: str.slice(0, 1200) })
           } catch {}
-          setMessages((p) => {
-            let matched = false
-            const next = p.map((m) => {
-              if (m.role !== "tool" || m.toolStatus !== "running") return m
-              if (m.toolCallID !== event.callID) return m
-              matched = true
-              return { ...m, toolStatus: "done" as const }
+          const evtCallID = event.callID
+          const evtName = event.name
+          queueMicrotask(() => {
+            setMessages((p) => {
+              let matched = false
+              const next = p.map((m) => {
+                if (m.role !== "tool" || m.toolStatus !== "running") return m
+                if (m.toolCallID !== evtCallID) return m
+                matched = true
+                return { ...m, toolStatus: "done" as const }
+              })
+              if (matched) return next
+              return p.map((m) =>
+                m.role === "tool" && m.toolName === evtName && m.toolStatus === "running"
+                  ? { ...m, toolStatus: "done" as const }
+                  : m
+              )
             })
-            if (matched) return next
-            return p.map((m) =>
-              m.role === "tool" && m.toolName === event.name && m.toolStatus === "running"
-                ? { ...m, toolStatus: "done" as const }
-                : m
-            )
           })
           continue
         }
 
         if (event.type === "error") {
-          setMessages((p) => {
-            const updated = p.map((m) =>
-              m.role === "tool" && m.toolStatus === "running"
-                ? { ...m, toolStatus: "error" as const }
-                : m
-            )
-            return [...updated, { role: "assistant" as const, content: `Error: ${event.error.message}` }]
+          if (streamErrorHandled) continue
+          streamErrorHandled = true
+          queueMicrotask(() => {
+            setMessages((p) => {
+              const updated = p.map((m) =>
+                m.role === "tool" && m.toolStatus === "running"
+                  ? { ...m, toolStatus: "error" as const }
+                  : m
+              )
+              return [...updated, { role: "assistant" as const, content: `Error: ${event.error.message}` }]
+            })
           })
           continue
         }
@@ -784,7 +866,10 @@ export function Home(props: {
             hasToolCalls,
             toolResults,
           })
-          if (content) setMessages((p) => [...p, { role: "assistant", content }])
+          if (content) {
+            assistantContent = content
+            queueMicrotask(() => setMessages((p) => [...p, { role: "assistant", content }]))
+          }
         }
       }
     } catch (err) {
@@ -797,6 +882,7 @@ export function Home(props: {
       setStreaming(false)
       saveChat()
     }
+    return { toolResults, assistantContent }
   }
 
   const aiProviderFiltered = createMemo(() => {

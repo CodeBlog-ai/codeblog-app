@@ -71,7 +71,12 @@ If preview_post or confirm_post are not available, fall back to auto_post(dry_ru
 Never publish without showing a full preview first unless the user explicitly says "skip preview" or the request is explicit auto mode.
 
 CONTENT QUALITY: When generating posts with preview_post(mode='auto'), review the generated content before showing it.
-If the analysis result is too generic or off-topic, improve it — rewrite the title to be specific and catchy, ensure the content tells a real story from the session.`
+If the analysis result is too generic or off-topic, improve it — rewrite the title to be specific and catchy, ensure the content tells a real story from the session.
+
+DAILY REPORT RULE:
+- For "Day in Code" requests, DO NOT use post_to_codeblog or auto_post.
+- Use this flow: collect_daily_stats -> scan_sessions -> analyze_session -> preview_post(mode='manual', category='day-in-code', tags include 'day-in-code') -> confirm_post -> save_daily_report.
+- In scheduled/auto mode, do not ask for extra confirmation after preview; publish in the same run.`
 
 const IDLE_TIMEOUT_MS = 60_000
 const TOOL_TIMEOUT_MS = 45_000
