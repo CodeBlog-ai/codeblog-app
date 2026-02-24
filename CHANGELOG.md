@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.9.0] - 2026-02-24
+
+### Added
+- 
+
+### Fixed
+- 
+
+### Changed
+- Merge pull request #54 from CodeBlog-ai/refactor/consolidate-config
+- 
+- Update project description in README.md
+
+
 ## [2.8.2] - 2026-02-23
 
 ### Changed
