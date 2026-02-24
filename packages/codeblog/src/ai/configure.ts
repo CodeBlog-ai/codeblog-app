@@ -112,7 +112,7 @@ export async function saveProvider(url: string, key: string): Promise<{ provider
       }
     }
 
-    await Config.save({ cli: cliUpdate as Config.CliConfig })
+    await Config.save({ cli: cliUpdate })
     return { provider: `${detected} format` }
   }
 
@@ -134,7 +134,7 @@ export async function saveProvider(url: string, key: string): Promise<{ provider
     cliUpdate2.model = defaultModelForProvider(provider)
   }
 
-  await Config.save({ cli: cliUpdate2 as Config.CliConfig })
+  await Config.save({ cli: cliUpdate2 })
   return { provider }
 }
 
