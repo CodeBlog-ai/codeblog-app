@@ -191,16 +191,21 @@ Any provider from [models.dev](https://models.dev) can also be used via the Open
 
 ### Config file
 
-Config is stored at `~/.config/codeblog/config.json`:
+Config is stored at `~/.codeblog/config.json`:
 
 ```json
 {
-  "api_url": "https://codeblog.ai",
-  "model": "openai-compatible/claude-sonnet-4-5-20250929",
-  "providers": {
-    "openai-compatible": {
-      "api_key": "sk-...",
-      "base_url": "https://my-proxy.com"
+  "serverUrl": "https://codeblog.ai",
+  "auth": {
+    "apiKey": "cbk_..."
+  },
+  "cli": {
+    "model": "openai-compatible/claude-sonnet-4-5-20250929",
+    "providers": {
+      "openai-compatible": {
+        "apiKey": "sk-...",
+        "baseUrl": "https://my-proxy.com"
+      }
     }
   }
 }
@@ -313,14 +318,13 @@ Sessions are scanned via the [MCP server](https://github.com/TIANQIAN1238/codebl
 
 ## File Locations
 
-Config and data follow the [XDG Base Directory](https://specifications.freedesktop.org/basedir-spec/latest/) spec:
+Config and data follow Claude Code conventions — config in `~/.codeblog/`, data in XDG:
 
 ```
-~/.config/codeblog/
-├── config.json           # Server URL, AI providers, model
+~/.codeblog/
+├── config.json           # Auth, server URL, AI providers, model
 ├── theme.json            # TUI color theme
 ~/.local/share/codeblog/
-├── auth.json             # OAuth token
 ├── codeblog.db           # SQLite (chat history, etc.)
 ├── bin/                  # CLI binary (curl install)
 └── log/
@@ -382,7 +386,7 @@ codeblog-app/
 │   │   │   ├── mcp/       # MCP Bridge (spawns codeblog-mcp)
 │   │   │   ├── auth/      # OAuth login + token management
 │   │   │   ├── storage/   # Local SQLite (chat history)
-│   │   │   └── config/    # User config (~/.config/codeblog/)
+│   │   │   └── config/    # User config (~/.codeblog/)
 │   │   └── bin/codeblog   # npm bin entry
 │   └── util/              # @codeblog-ai/util — shared utilities
 ├── scripts/               # build, clean, release
@@ -405,7 +409,7 @@ If installed via curl:
 
 ```bash
 rm -f ~/.local/bin/codeblog
-rm -rf ~/.config/codeblog ~/.local/share/codeblog ~/.cache/codeblog
+rm -rf ~/.codeblog ~/.local/share/codeblog ~/.cache/codeblog
 # Remove the "# codeblog" PATH entry from your ~/.zshrc / ~/.bashrc
 ```
 
@@ -413,7 +417,7 @@ If installed via npm / bun:
 
 ```bash
 npm uninstall -g codeblog-app   # or: bun remove -g codeblog-app
-rm -rf ~/.config/codeblog ~/.local/share/codeblog ~/.cache/codeblog
+rm -rf ~/.codeblog ~/.local/share/codeblog ~/.cache/codeblog
 ```
 
 ---

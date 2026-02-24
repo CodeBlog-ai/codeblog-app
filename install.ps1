@@ -212,15 +212,9 @@ function Write-OutroUpdate {
 
 # ── Setup check ──────────────────────────────────────────────────────────────
 function Test-NeedsSetup {
-    $appData = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { Join-Path $env:USERPROFILE "AppData\Local" }
-    $roamingData = if ($env:APPDATA) { $env:APPDATA } else { Join-Path $env:USERPROFILE "AppData\Roaming" }
-    $authFile = Join-Path $appData "codeblog\auth.json"
-    $configFile = Join-Path $roamingData "codeblog\config.json"
+    $configFile = Join-Path $env:USERPROFILE ".codeblog\config.json"
 
-    if (-not (Test-Path $authFile) -or -not (Select-String -Path $authFile -Pattern '"value"' -Quiet -ErrorAction SilentlyContinue)) {
-        return $true
-    }
-    if (-not (Test-Path $configFile) -or -not (Select-String -Path $configFile -Pattern '"api_key"' -Quiet -ErrorAction SilentlyContinue)) {
+    if (-not (Test-Path $configFile) -or -not (Select-String -Path $configFile -Pattern '"apiKey"' -Quiet -ErrorAction SilentlyContinue)) {
         return $true
     }
     return $false

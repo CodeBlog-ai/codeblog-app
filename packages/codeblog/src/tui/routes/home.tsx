@@ -306,13 +306,13 @@ export function Home(props: {
         const current = resolveModelFromConfig(cfg) || AIProvider.DEFAULT_MODEL
         const currentBuiltin = AIProvider.BUILTIN_MODELS[current]
         const currentProvider =
-          cfg.default_provider ||
+          cfg.cli?.defaultProvider ||
           (current.includes("/") ? current.split("/")[0] : currentBuiltin?.providerID) ||
           "openai"
-        const providerCfg = cfg.providers?.[currentProvider]
-        const providerApi = providerCfg?.api || providerCfg?.compat_profile || (currentProvider === "openai" ? "openai" : "openai-compatible")
-        const providerKey = providerCfg?.api_key
-        const providerBase = providerCfg?.base_url || (currentProvider === "openai" ? "https://api.openai.com" : "")
+        const providerCfg = cfg.cli?.providers?.[currentProvider]
+        const providerApi = providerCfg?.apiType || providerCfg?.compatProfile || (currentProvider === "openai" ? "openai" : "openai-compatible")
+        const providerKey = providerCfg?.apiKey
+        const providerBase = providerCfg?.baseUrl || (currentProvider === "openai" ? "https://api.openai.com" : "")
 
         const remote = await (async () => {
           if (!providerKey || !providerBase) return [] as string[]
@@ -382,7 +382,7 @@ export function Home(props: {
   async function pickModel(id: string) {
     try {
       const { Config } = await import("../../config")
-      await Config.save({ model: id })
+      await Config.save({ cli: { model: id } })
       props.onAIConfigured()
       showMsg(`Set model to ${id}`, theme.colors.success)
     } catch (err) {
@@ -958,18 +958,20 @@ export function Home(props: {
 
       const proxyURL = `${(await Config.url()).replace(/\/+$/, "")}/api/v1/ai-credit/chat`
       const cfg = await Config.load()
-      const providers = cfg.providers || {}
+      const providers = cfg.cli?.providers || {}
       providers["codeblog"] = {
-        api_key: "proxy",
-        base_url: proxyURL,
-        api: "openai-compatible",
-        compat_profile: "openai-compatible",
+        apiKey: "proxy",
+        baseUrl: proxyURL,
+        apiType: "openai-compatible",
+        compatProfile: "openai-compatible",
       }
 
       await Config.save({
-        providers,
-        default_provider: "codeblog",
-        model: `codeblog/${balance.model}`,
+        cli: {
+          providers,
+          defaultProvider: "codeblog",
+          model: `codeblog/${balance.model}`,
+        },
       })
 
       const msg = claim.already_claimed
@@ -1006,17 +1008,17 @@ export function Home(props: {
 
     const { Config } = await import("../../config")
     const cfg = await Config.load()
-    const providers = cfg.providers || {}
+    const providers = cfg.cli?.providers || {}
     const resolvedApi = verify.detectedApi || choice.api
     const resolvedCompat = choice.providerID === "openai-compatible" && resolvedApi === "openai"
       ? "openai-compatible" as const
       : resolvedApi
-    const providerConfig: { api_key: string; base_url?: string; api: typeof resolvedApi; compat_profile: typeof resolvedCompat } = {
-      api_key: key,
-      api: resolvedApi,
-      compat_profile: resolvedCompat,
+    const providerConfig: { apiKey: string; baseUrl?: string; apiType: typeof resolvedApi; compatProfile: typeof resolvedCompat } = {
+      apiKey: key,
+      apiType: resolvedApi,
+      compatProfile: resolvedCompat,
     }
-    if (baseURL) providerConfig.base_url = baseURL
+    if (baseURL) providerConfig.baseUrl = baseURL
     providers[choice.providerID] = providerConfig
 
     const saveModel = choice.providerID === "openai-compatible" && !model.includes("/")
@@ -1024,9 +1026,11 @@ export function Home(props: {
       : model
 
     await Config.save({
-      providers,
-      default_provider: choice.providerID,
-      model: saveModel,
+      cli: {
+        providers,
+        defaultProvider: choice.providerID,
+        model: saveModel,
+      },
     })
 
     showMsg(`✓ AI configured: ${choice.name} (${saveModel})`, theme.colors.success)

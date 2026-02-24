@@ -199,20 +199,10 @@ install_binary() {
 NEEDS_SETUP=0
 
 check_needs_setup() {
-  # XDG paths matching the app's Global.Path (src/global/index.ts)
-  local xdg_data="${XDG_DATA_HOME:-$HOME/.local/share}"
-  local xdg_config="${XDG_CONFIG_HOME:-$HOME/.config}"
-  local auth_file="$xdg_data/codeblog/auth.json"
-  local config_file="$xdg_config/codeblog/config.json"
+  local config_file="$HOME/.codeblog/config.json"
 
   # Not logged in?
-  if [ ! -f "$auth_file" ] || ! grep -q '"value"' "$auth_file" 2>/dev/null; then
-    NEEDS_SETUP=1
-    return
-  fi
-
-  # No AI provider configured?
-  if [ ! -f "$config_file" ] || ! grep -q '"api_key"' "$config_file" 2>/dev/null; then
+  if [ ! -f "$config_file" ] || ! grep -q '"apiKey"' "$config_file" 2>/dev/null; then
     NEEDS_SETUP=1
     return
   fi

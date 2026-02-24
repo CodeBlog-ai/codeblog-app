@@ -49,11 +49,11 @@ export function defaultModelForProvider(providerID?: string): string {
   return PROVIDER_DEFAULT_MODEL[providerID] || DEFAULT_MODEL
 }
 
-export function resolveModelFromConfig(cfg: { model?: string; default_provider?: string }): string {
-  const model = normalizeModelID(cfg.model)
+export function resolveModelFromConfig(cfg: { cli?: { model?: string; defaultProvider?: string } }): string {
+  const model = normalizeModelID(cfg.cli?.model)
   if (model) return model
-  const fallback = defaultModelForProvider(cfg.default_provider)
-  if (cfg.default_provider === "openai-compatible" && !fallback.includes("/")) {
+  const fallback = defaultModelForProvider(cfg.cli?.defaultProvider)
+  if (cfg.cli?.defaultProvider === "openai-compatible" && !fallback.includes("/")) {
     return `openai-compatible/${fallback}`
   }
   return fallback

@@ -49,7 +49,7 @@ function readFirstEnv(keys: string[]): string | undefined {
 
 export async function loadProviders(cfgInput?: Config.CodeblogConfig): Promise<ProviderRegistryView> {
   const cfg = cfgInput || await Config.load()
-  const user = cfg.providers || {}
+  const user = cfg.cli?.providers || {}
   const ids = new Set<string>([
     ...Object.keys(PROVIDER_ENV),
     ...Object.keys(user),
@@ -62,12 +62,12 @@ export async function loadProviders(cfgInput?: Config.CodeblogConfig): Promise<P
     providers[id] = {
       id,
       config,
-      apiKey: readFirstEnv(PROVIDER_ENV[id] || []) || config?.api_key,
-      baseURL: readFirstEnv(PROVIDER_BASE_URL_ENV[id] || []) || config?.base_url,
+      apiKey: readFirstEnv(PROVIDER_ENV[id] || []) || config?.apiKey,
+      baseURL: readFirstEnv(PROVIDER_BASE_URL_ENV[id] || []) || config?.baseUrl,
     }
   }
 
-  return { providers, defaultProvider: cfg.default_provider }
+  return { providers, defaultProvider: cfg.cli?.defaultProvider }
 }
 
 function availableProvidersWithKeys(providers: Record<string, ProviderRuntimeConfig>): string[] {

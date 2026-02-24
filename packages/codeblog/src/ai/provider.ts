@@ -40,7 +40,7 @@ export namespace AIProvider {
       if (process.env[key]) return process.env[key]
     }
     const cfg = await Config.load()
-    return cfg.providers?.[providerID]?.api_key
+    return cfg.cli?.providers?.[providerID]?.apiKey
   }
 
   export async function getBaseUrl(providerID: string): Promise<string | undefined> {
@@ -49,7 +49,7 @@ export namespace AIProvider {
       if (process.env[key]) return process.env[key]
     }
     const cfg = await Config.load()
-    return cfg.providers?.[providerID]?.base_url
+    return cfg.cli?.providers?.[providerID]?.baseUrl
   }
 
   export async function listProviders(): Promise<Record<string, { name: string; models: string[]; hasKey: boolean }>> {
@@ -89,7 +89,7 @@ export namespace AIProvider {
   }
 
   export async function getModel(modelID?: string): Promise<LanguageModel> {
-    const useRegistry = await Config.featureEnabled("ai_provider_registry_v2")
+    const useRegistry = await Config.featureEnabled("aiProviderRegistryV2")
     if (useRegistry) {
       const route = await routeModel(modelID)
       const customFetch = route.providerID === "codeblog" ? await loadCodeblogFetch() : undefined
@@ -99,7 +99,7 @@ export namespace AIProvider {
   }
 
   export async function resolveModelCompat(modelID?: string): Promise<ModelCompatConfig> {
-    const useRegistry = await Config.featureEnabled("ai_provider_registry_v2")
+    const useRegistry = await Config.featureEnabled("aiProviderRegistryV2")
     if (useRegistry) return (await routeModel(modelID)).compat
     return (await resolveLegacyRoute(modelID)).compat
   }
@@ -130,7 +130,7 @@ export namespace AIProvider {
         modelID: requested,
         apiKey,
         baseURL,
-        compat: resolveCompat({ providerID: builtin.providerID, modelID: requested, providerConfig: cfg.providers?.[builtin.providerID] }),
+        compat: resolveCompat({ providerID: builtin.providerID, modelID: requested, providerConfig: cfg.cli?.providers?.[builtin.providerID] }),
       }
     }
 
@@ -145,20 +145,20 @@ export namespace AIProvider {
         modelID,
         apiKey,
         baseURL,
-        compat: resolveCompat({ providerID: providerID!, modelID, providerConfig: cfg.providers?.[providerID!] }),
+        compat: resolveCompat({ providerID: providerID!, modelID, providerConfig: cfg.cli?.providers?.[providerID!] }),
       }
     }
 
-    if (cfg.providers) {
-      for (const [providerID, p] of Object.entries(cfg.providers)) {
-        if (!p.api_key) continue
-        const baseURL = p.base_url || (await getBaseUrl(providerID))
+    if (cfg.cli?.providers) {
+      for (const [providerID, p] of Object.entries(cfg.cli.providers)) {
+        if (!p.apiKey) continue
+        const baseURL = p.baseUrl || (await getBaseUrl(providerID))
         if (!baseURL) continue
-        log.info("legacy fallback: unknown model routed to first provider with base_url", { provider: providerID, model: requested })
+        log.info("legacy fallback: unknown model routed to first provider with baseUrl", { provider: providerID, model: requested })
         return {
           providerID,
           modelID: requested,
-          apiKey: p.api_key,
+          apiKey: p.apiKey,
           baseURL,
           compat: resolveCompat({ providerID, modelID: requested, providerConfig: p }),
         }

@@ -1,7 +1,5 @@
-import path from "path"
-import { chmod, writeFile } from "fs/promises"
-import { Global } from "../global"
 import z from "zod"
+import { Config } from "../config"
 
 export namespace Auth {
   export const Token = z
@@ -14,36 +12,27 @@ export namespace Auth {
     .meta({ ref: "AuthToken" })
   export type Token = z.infer<typeof Token>
 
-  const filepath = path.join(Global.Path.data, "auth.json")
-
   export async function get(): Promise<Token | null> {
-    const file = Bun.file(filepath)
-    const data = await file.json().catch(() => null)
-    if (!data) return null
-    const parsed = Token.safeParse(data)
-    if (!parsed.success) return null
-    return parsed.data
+    const cfg = await Config.load()
+    if (!cfg.auth?.apiKey) return null
+    return { type: "apikey", value: cfg.auth.apiKey, username: cfg.auth.username }
   }
 
   export async function set(token: Token) {
-    await writeFile(filepath, JSON.stringify(token, null, 2))
-    await chmod(filepath, 0o600).catch(() => {})
+    await Config.save({ auth: { apiKey: token.value, username: token.username } })
   }
 
   export async function remove() {
-    const fs = await import("fs/promises")
-    await fs.unlink(filepath).catch(() => {})
+    await Config.save({ auth: { apiKey: undefined, userId: undefined, activeAgent: undefined, username: undefined } })
   }
 
   export async function header(): Promise<Record<string, string>> {
     const token = await get()
     if (!token) return {}
-    if (token.type === "apikey") return { Authorization: `Bearer ${token.value}` }
     return { Authorization: `Bearer ${token.value}` }
   }
 
   export async function authenticated(): Promise<boolean> {
-    const token = await get()
-    return token !== null
+    return (await get()) !== null
   }
 }

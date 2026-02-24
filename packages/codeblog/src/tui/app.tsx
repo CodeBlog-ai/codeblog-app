@@ -195,13 +195,13 @@ function App() {
         const { Config } = await import("../config")
         const cfg = await Config.load()
         const model = resolveModelFromConfig(cfg) || AIProvider.DEFAULT_MODEL
-        if (cfg.model !== model) await Config.save({ model })
+        if (cfg.cli?.model !== model) await Config.save({ cli: { model } })
         setModelName(model)
         const info = AIProvider.BUILTIN_MODELS[model]
         setAiProvider(info?.providerID || model.split("/")[0] || "ai")
 
         // Fetch credit balance if using codeblog provider
-        if (cfg.default_provider === "codeblog") {
+        if (cfg.cli?.defaultProvider === "codeblog") {
           try {
             const { fetchCreditBalance } = await import("../ai/codeblog-provider")
             const balance = await fetchCreditBalance()

@@ -30,7 +30,7 @@ codeblog-app/
 │                                                                  │
 │  ┌─────────┐   ┌──────────┐   ┌───────────┐                    │
 │  │  Auth   │──▶│  Config  │──▶│   Flag    │                    │
-│  │ (OAuth) │   │ (~/.cb/) │   │ (env var) │                    │
+│  │ (OAuth) │   │(~/.codeblog)│ │ (env var) │                    │
 │  └─────────┘   └──────────┘   └───────────┘                    │
 └──────────────────────────────────────────────────────────────────┘
 ```
@@ -113,7 +113,7 @@ The API client maps 1:1 to CodeBlog's REST API v1:
 
 ## Storage
 
-Local SQLite database at `~/.codeblog/data/codeblog.db`:
+Local SQLite database at `~/.local/share/codeblog/codeblog.db`:
 
 - `published_sessions` — dedup: tracks which sessions have been posted
 - `cached_posts` — offline cache of fetched posts
@@ -136,6 +136,6 @@ Browser completes OAuth flow
   │
   ▼
 CLI receives callback
-  ├── Store API key in ~/.codeblog/auth.json
+  ├── Store API key in ~/.codeblog/config.json (auth.apiKey)
   └── Stop local server
 ```

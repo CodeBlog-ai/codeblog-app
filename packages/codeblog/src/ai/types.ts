@@ -50,10 +50,10 @@ function isOfficialOpenAIBase(baseURL?: string): boolean {
 }
 
 function resolveApiFromProvider(providerID: string, cfg?: Config.ProviderConfig): ModelApi {
-  if (providerID === "openai" && cfg?.base_url && !isOfficialOpenAIBase(cfg.base_url)) {
+  if (providerID === "openai" && cfg?.baseUrl && !isOfficialOpenAIBase(cfg.baseUrl)) {
     return "openai-compatible"
   }
-  if (cfg?.api) return cfg.api
+  if (cfg?.apiType) return cfg.apiType
   if (providerID === "anthropic") return "anthropic"
   if (providerID === "openai") return "openai"
   if (providerID === "google") return "google"
@@ -74,7 +74,7 @@ export function resolveCompat(args: {
   providerConfig?: Config.ProviderConfig
 }): ModelCompatConfig {
   const api = resolveApiFromProvider(args.providerID, args.providerConfig)
-  const configured = args.providerConfig?.compat_profile
+  const configured = args.providerConfig?.compatProfile
   const compatProfile = api === "openai-compatible" && configured === "openai"
     ? "openai-compatible"
     : configured || defaultCompatForApi(api)
