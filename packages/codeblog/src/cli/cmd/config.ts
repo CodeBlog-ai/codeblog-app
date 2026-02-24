@@ -86,12 +86,12 @@ export const ConfigCommand: CommandModule = {
 
       if (args.provider && (args.apiKey || args.baseUrl)) {
         const cfg = await Config.load()
-        const providers = cfg.providers || {}
+        const providers = cfg.cli?.providers || {}
         const existing = providers[args.provider as string] || {} as Config.ProviderConfig
-        if (args.apiKey) existing.api_key = args.apiKey as string
-        if (args.baseUrl) existing.base_url = args.baseUrl as string
+        if (args.apiKey) existing.apiKey = args.apiKey as string
+        if (args.baseUrl) existing.baseUrl = args.baseUrl as string
         providers[args.provider as string] = existing
-        await Config.save({ providers })
+        await Config.save({ cli: { providers } })
         const parts: string[] = []
         if (args.apiKey) parts.push("API key")
         if (args.baseUrl) parts.push(`base URL (${args.baseUrl})`)
@@ -100,19 +100,19 @@ export const ConfigCommand: CommandModule = {
       }
 
       if (args.model) {
-        await Config.save({ model: args.model as string })
+        await Config.save({ cli: { model: args.model as string } })
         UI.success(`Default model set to ${args.model}`)
         return
       }
 
       if (args.url) {
-        await Config.save({ api_url: args.url as string })
+        await Config.save({ serverUrl: args.url as string })
         UI.success(`Server URL set to ${args.url}`)
         return
       }
 
       if (args.language) {
-        await Config.save({ default_language: args.language as string })
+        await Config.save({ cli: { defaultLanguage: args.language as string } })
         UI.success(`Default language set to ${args.language}`)
         return
       }
@@ -121,22 +121,22 @@ export const ConfigCommand: CommandModule = {
       const cfg = await Config.load()
       const { resolveModelFromConfig } = await import("../../ai/models")
       const model = resolveModelFromConfig(cfg) || AIProvider.DEFAULT_MODEL
-      const providers = cfg.providers || {}
+      const providers = cfg.cli?.providers || {}
 
       console.log("")
       console.log(`  ${UI.Style.TEXT_NORMAL_BOLD}Current Config${UI.Style.TEXT_NORMAL}`)
       console.log(`  ${UI.Style.TEXT_DIM}${Config.filepath}${UI.Style.TEXT_NORMAL}`)
       console.log("")
       console.log(`  Model:     ${UI.Style.TEXT_HIGHLIGHT}${model}${UI.Style.TEXT_NORMAL}`)
-      console.log(`  API URL:   ${cfg.api_url || "https://codeblog.ai"}`)
-      console.log(`  Language:  ${cfg.default_language || `${UI.Style.TEXT_DIM}(server default)${UI.Style.TEXT_NORMAL}`}`)
+      console.log(`  API URL:   ${cfg.serverUrl || "https://codeblog.ai"}`)
+      console.log(`  Language:  ${cfg.cli?.defaultLanguage || `${UI.Style.TEXT_DIM}(server default)${UI.Style.TEXT_NORMAL}`}`)
       console.log("")
 
       if (Object.keys(providers).length > 0) {
         console.log(`  ${UI.Style.TEXT_NORMAL_BOLD}AI Providers${UI.Style.TEXT_NORMAL}`)
         for (const [id, p] of Object.entries(providers)) {
-          const masked = p.api_key ? p.api_key.slice(0, 8) + "..." : "not set"
-          const url = p.base_url ? ` → ${p.base_url}` : ""
+          const masked = p.apiKey ? p.apiKey.slice(0, 8) + "..." : "not set"
+          const url = p.baseUrl ? ` → ${p.baseUrl}` : ""
           console.log(`    ${UI.Style.TEXT_SUCCESS}✓${UI.Style.TEXT_NORMAL} ${id}: ${UI.Style.TEXT_DIM}${masked}${url}${UI.Style.TEXT_NORMAL}`)
         }
       } else {

@@ -7,7 +7,7 @@ import { Config } from "../../config"
 describe("AIProvider", () => {
   const originalEnv = { ...process.env }
   const testHome = path.join(os.tmpdir(), `codeblog-provider-test-${process.pid}-${Date.now()}`)
-  const configFile = path.join(testHome, ".config", "codeblog", "config.json")
+  const configFile = path.join(testHome, ".codeblog", "config.json")
   const xdgData = path.join(testHome, ".local", "share")
   const xdgCache = path.join(testHome, ".cache")
   const xdgConfig = path.join(testHome, ".config")
@@ -207,7 +207,7 @@ describe("AIProvider", () => {
 
   test("getModel throws when no API key for builtin model", async () => {
     const load = Config.load
-    Config.load = async () => ({ api_url: "https://codeblog.ai" })
+    Config.load = async () => ({ serverUrl: "https://codeblog.ai" })
     try {
       await expect(AIProvider.getModel("gpt-4o")).rejects.toThrow("No API key for openai")
     } finally {
@@ -215,10 +215,10 @@ describe("AIProvider", () => {
     }
   })
 
-  test("getModel falls back to provider with base_url for unknown model", async () => {
-    // When a provider with base_url is configured, unknown models get sent there
+  test("getModel falls back to provider with baseUrl for unknown model", async () => {
+    // When a provider with baseUrl is configured, unknown models get sent there
     // instead of throwing. This test verifies the fallback behavior.
-    // If no provider has a base_url, it would throw.
+    // If no provider has a baseUrl, it would throw.
     const result = AIProvider.getModel("nonexistent-model-xyz")
     // Either resolves (provider with base_url available) or rejects
     const settled = await Promise.allSettled([result])

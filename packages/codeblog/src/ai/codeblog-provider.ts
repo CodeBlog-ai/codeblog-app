@@ -45,7 +45,7 @@ type FetchFn = (
 
 export async function getCodeblogFetch(): Promise<FetchFn> {
   const cfg = await Config.load()
-  const proxyURL = (cfg.providers?.codeblog?.base_url || `${(await Config.url()).replace(/\/+$/, "")}/api/v1/ai-credit/chat`).replace(/\/+$/, "")
+  const proxyURL = (cfg.cli?.providers?.codeblog?.baseUrl || `${(await Config.url()).replace(/\/+$/, "")}/api/v1/ai-credit/chat`).replace(/\/+$/, "")
 
   return async (input, init) => {
     const headers = new Headers(init?.headers)

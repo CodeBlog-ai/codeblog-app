@@ -56,7 +56,7 @@ export function createCommands(deps: CommandDeps): CmdDef[] {
       }
 
       const saveId = picked.providerID === "openai-compatible" ? `openai-compatible/${picked.id}` : picked.id
-      await Config.save({ model: saveId })
+      await Config.save({ cli: { model: saveId } })
       deps.onAIConfigured()
       deps.showMsg(`Model switched to ${saveId}`, deps.colors.success)
     }},
@@ -72,7 +72,11 @@ export function createCommands(deps: CommandDeps): CmdDef[] {
     { name: "/logout", description: "Sign out of CodeBlog", action: async () => {
       try {
         const { Auth } = await import("../auth")
+        const { McpBridge } = await import("../mcp/client")
+        const { clearChatToolsCache } = await import("../ai/tools")
         await Auth.remove()
+        await McpBridge.disconnect()
+        clearChatToolsCache()
         deps.showMsg("Logged out.", deps.colors.text)
         deps.onLogout()
       } catch (err) { deps.showMsg(`Logout failed: ${err instanceof Error ? err.message : String(err)}`, deps.colors.error) }

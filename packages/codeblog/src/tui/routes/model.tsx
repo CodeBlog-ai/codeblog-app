@@ -46,7 +46,7 @@ export function ModelPicker(props: { onDone: (model?: string) => void }) {
       const cfg = await Config.load()
       const resolved = resolveModelFromConfig(cfg) || AIProvider.DEFAULT_MODEL
       setCurrent(resolved)
-      if (cfg.model !== resolved) await Config.save({ model: resolved })
+      if (cfg.cli?.model !== resolved) await Config.save({ cli: { model: resolved } })
 
       setStatus("Fetching models from API...")
       const all = await AIProvider.available()
@@ -130,7 +130,7 @@ export function ModelPicker(props: { onDone: (model?: string) => void }) {
       const item = filtered().find((m) => m.id === id)
       const saveId = item && item.provider === "openai-compatible" ? `openai-compatible/${id}` : id
       const { Config } = await import("../../config")
-      await Config.save({ model: saveId })
+      await Config.save({ cli: { model: saveId } })
       props.onDone(saveId)
     } catch {
       props.onDone()

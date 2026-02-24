@@ -90,29 +90,29 @@ export async function saveProvider(url: string, key: string): Promise<{ provider
     process.env[envBase] = url
 
     const cfg = await Config.load()
-    const providers = cfg.providers || {}
+    const providers = cfg.cli?.providers || {}
     providers[provider] = {
-      api_key: key,
-      base_url: url,
-      api: detected === "anthropic" ? "anthropic" : "openai-compatible",
-      compat_profile: detected === "anthropic" ? "anthropic" : "openai-compatible",
+      apiKey: key,
+      baseUrl: url,
+      apiType: detected === "anthropic" ? "anthropic" : "openai-compatible",
+      compatProfile: detected === "anthropic" ? "anthropic" : "openai-compatible",
     }
 
     // Auto-set model if not already configured
-    const update: Record<string, unknown> = { providers, default_provider: provider }
-    if (!cfg.model) {
+    const cliUpdate: Record<string, unknown> = { providers, defaultProvider: provider }
+    if (!cfg.cli?.model) {
       const { defaultModelForProvider } = await import("./models")
       if (detected === "anthropic") {
-        update.model = defaultModelForProvider("anthropic")
+        cliUpdate.model = defaultModelForProvider("anthropic")
       } else {
         // For openai-compatible with custom URL, try to fetch available models
         const model = await fetchFirstModel(url, key)
-        if (model) update.model = `openai-compatible/${model}`
-        else update.model = `openai-compatible/${defaultModelForProvider("openai-compatible")}`
+        if (model) cliUpdate.model = `openai-compatible/${model}`
+        else cliUpdate.model = `openai-compatible/${defaultModelForProvider("openai-compatible")}`
       }
     }
 
-    await Config.save(update)
+    await Config.save({ cli: cliUpdate as Config.CliConfig })
     return { provider: `${detected} format` }
   }
 
@@ -120,21 +120,21 @@ export async function saveProvider(url: string, key: string): Promise<{ provider
   if (ENV_MAP[provider]) process.env[ENV_MAP[provider]] = key
 
   const cfg = await Config.load()
-  const providers = cfg.providers || {}
+  const providers = cfg.cli?.providers || {}
   providers[provider] = {
-    api_key: key,
-    api: provider === "anthropic" ? "anthropic" : provider === "google" ? "google" : provider === "openai" ? "openai" : "openai-compatible",
-    compat_profile: provider === "anthropic" ? "anthropic" : provider === "google" ? "google" : provider === "openai" ? "openai" : "openai-compatible",
+    apiKey: key,
+    apiType: provider === "anthropic" ? "anthropic" : provider === "google" ? "google" : provider === "openai" ? "openai" : "openai-compatible",
+    compatProfile: provider === "anthropic" ? "anthropic" : provider === "google" ? "google" : provider === "openai" ? "openai" : "openai-compatible",
   }
 
   // Auto-set model for known providers
-  const update: Record<string, unknown> = { providers, default_provider: provider }
-  if (!cfg.model) {
+  const cliUpdate2: Record<string, unknown> = { providers, defaultProvider: provider }
+  if (!cfg.cli?.model) {
     const { defaultModelForProvider } = await import("./models")
-    update.model = defaultModelForProvider(provider)
+    cliUpdate2.model = defaultModelForProvider(provider)
   }
 
-  await Config.save(update)
+  await Config.save({ cli: cliUpdate2 as Config.CliConfig })
   return { provider }
 }
 

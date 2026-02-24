@@ -16,7 +16,7 @@ describe("AI Compat", () => {
     const compat = resolveCompat({
       providerID: "openai-compatible",
       modelID: "claude-sonnet-4-20250514",
-      providerConfig: { api_key: "x", api: "anthropic", compat_profile: "anthropic" },
+      providerConfig: { apiKey: "x", apiType: "anthropic", compatProfile: "anthropic" },
     })
     expect(compat.api).toBe("anthropic")
     expect(compat.compatProfile).toBe("anthropic")

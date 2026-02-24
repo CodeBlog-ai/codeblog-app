@@ -356,7 +356,7 @@ function isOfficialOpenAIBase(baseURL: string): boolean {
   }
 }
 
-async function verifyEndpoint(choice: ProviderChoice, baseURL: string, key: string): Promise<{ ok: boolean; detail: string; detectedApi?: Config.ModelApi }> {
+async function verifyEndpoint(choice: ProviderChoice, baseURL: string, key: string): Promise<{ ok: boolean; detail: string; detectedApi?: Config.ApiType }> {
   try {
     if (choice.api === "anthropic") {
       const clean = baseURL.replace(/\/+$/, "")
@@ -383,7 +383,7 @@ async function verifyEndpoint(choice: ProviderChoice, baseURL: string, key: stri
     const detected = await probe(baseURL, key)
     if (detected === "anthropic") return { ok: true, detail: "Detected Anthropic API format", detectedApi: "anthropic" }
     if (detected === "openai") {
-      const detectedApi: Config.ModelApi =
+      const detectedApi: Config.ApiType =
         choice.providerID === "openai" && isOfficialOpenAIBase(baseURL)
           ? "openai"
           : "openai-compatible"
@@ -392,7 +392,7 @@ async function verifyEndpoint(choice: ProviderChoice, baseURL: string, key: stri
 
     const models = await fetchOpenAIModels(baseURL, key)
     if (models.length > 0) {
-      const detectedApi: Config.ModelApi =
+      const detectedApi: Config.ApiType =
         choice.providerID === "openai" && isOfficialOpenAIBase(baseURL)
           ? "openai"
           : "openai-compatible"
@@ -501,18 +501,20 @@ export async function runAISetupWizard(source: "setup" | "command" = "command"):
 
       const proxyURL = `${(await Config.url()).replace(/\/+$/, "")}/api/v1/ai-credit/chat`
       const cfg = await Config.load()
-      const providers = cfg.providers || {}
+      const providers = cfg.cli?.providers || {}
       providers["codeblog"] = {
-        api_key: "proxy",
-        base_url: proxyURL,
-        api: "openai-compatible",
-        compat_profile: "openai-compatible",
+        apiKey: "proxy",
+        baseUrl: proxyURL,
+        apiType: "openai-compatible",
+        compatProfile: "openai-compatible",
       }
 
       await Config.save({
-        providers,
-        default_provider: "codeblog",
-        model: `codeblog/${balance.model}`,
+        cli: {
+          providers,
+          defaultProvider: "codeblog",
+          model: `codeblog/${balance.model}`,
+        },
       })
 
       UI.success(`AI configured: CodeBlog Credit (${balance.model})`)
@@ -567,7 +569,7 @@ export async function runAISetupWizard(source: "setup" | "command" = "command"):
   }
 
   let verified = false
-  let detectedApi: Config.ModelApi | undefined
+  let detectedApi: Config.ApiType | undefined
 
   while (!verified) {
     await shimmerLine("Verifying endpoint...", 900)
@@ -589,17 +591,17 @@ export async function runAISetupWizard(source: "setup" | "command" = "command"):
     return
   }
   const cfg = await Config.load()
-  const providers = cfg.providers || {}
+  const providers = cfg.cli?.providers || {}
   const resolvedApi = detectedApi || provider.api
   const resolvedCompat = provider.providerID === "openai-compatible" && resolvedApi === "openai"
     ? "openai-compatible"
     : resolvedApi
   const providerConfig: Config.ProviderConfig = {
-    api_key: key,
-    api: resolvedApi,
-    compat_profile: resolvedCompat,
+    apiKey: key,
+    apiType: resolvedApi,
+    compatProfile: resolvedCompat,
   }
-  if (baseURL) providerConfig.base_url = baseURL
+  if (baseURL) providerConfig.baseUrl = baseURL
   providers[provider.providerID] = providerConfig
 
   const model = provider.providerID === "openai-compatible" && !selectedModel.includes("/")
@@ -607,9 +609,11 @@ export async function runAISetupWizard(source: "setup" | "command" = "command"):
     : selectedModel
 
   await Config.save({
-    providers,
-    default_provider: provider.providerID,
-    model,
+    cli: {
+      providers,
+      defaultProvider: provider.providerID,
+      model,
+    },
   })
 
   UI.success(`AI configured: ${provider.name} (${model})`)
@@ -763,11 +767,6 @@ async function agentSelectionPrompt(): Promise<void> {
         await Auth.set({ type: "apikey", value: switchData.agent.api_key, username: auth.username })
         await Config.saveActiveAgent(switchData.agent.name, auth.username)
 
-        // Sync to MCP config
-        try {
-          await McpBridge.callTool("codeblog_setup", { api_key: switchData.agent.api_key })
-        } catch {}
-
         UI.success(`Active agent: ${switchData.agent.name}`)
       } else {
         UI.error("Failed to switch agent. You can switch later with: codeblog agent switch")
@@ -863,11 +862,6 @@ async function agentCreationWizard(): Promise<void> {
     const auth = await Auth.get()
     await Auth.set({ type: "apikey", value: result.api_key, username: auth?.username })
     await Config.saveActiveAgent(result.name, auth?.username)
-
-    // Sync to MCP config
-    try {
-      await McpBridge.callTool("codeblog_setup", { api_key: result.api_key })
-    } catch {}
 
     console.log("")
     UI.success(`Your agent "${emoji} ${name}" is ready! It'll represent you on CodeBlog.`)
