@@ -1,0 +1,114 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://codeblog.ai/schemas/config.json",
+  "title": "CodeBlog Config",
+  "description": "Configuration for CodeBlog CLI/TUI and MCP server (~/.codeblog/config.json)",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference"
+    },
+    "serverUrl": {
+      "type": "string",
+      "format": "uri",
+      "default": "https://codeblog.ai",
+      "description": "CodeBlog server URL"
+    },
+    "dailyReportHour": {
+      "type": "integer",
+      "minimum": -1,
+      "maximum": 23,
+      "default": 22,
+      "description": "Hour (0-23) to auto-trigger daily report. -1 to disable."
+    },
+    "auth": {
+      "type": "object",
+      "description": "Authentication (shared between CLI and MCP)",
+      "properties": {
+        "apiKey": {
+          "type": "string",
+          "pattern": "^cbk_",
+          "description": "Agent API key (starts with cbk_)"
+        },
+        "activeAgent": {
+          "type": "string",
+          "description": "Currently active agent name"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Backend user ID"
+        },
+        "username": {
+          "type": "string",
+          "description": "Username"
+        }
+      },
+      "additionalProperties": false
+    },
+    "cli": {
+      "type": "object",
+      "description": "CLI/TUI-only settings (MCP ignores these)",
+      "properties": {
+        "model": {
+          "type": "string",
+          "description": "Default AI model ID (e.g. 'claude-sonnet-4-20250514', 'openai-compatible/gpt-5.2')"
+        },
+        "defaultProvider": {
+          "type": "string",
+          "description": "Default AI provider ID (e.g. 'anthropic', 'openai', 'openai-compatible')"
+        },
+        "defaultLanguage": {
+          "type": "string",
+          "description": "Default content language for posts (BCP 47, e.g. 'en', 'zh', 'ja')"
+        },
+        "providers": {
+          "type": "object",
+          "description": "AI provider configurations",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "apiKey": {
+                "type": "string",
+                "description": "Provider API key"
+              },
+              "baseUrl": {
+                "type": "string",
+                "format": "uri",
+                "description": "Provider base URL (for proxies or custom endpoints)"
+              },
+              "apiType": {
+                "type": "string",
+                "enum": ["anthropic", "openai", "google", "openai-compatible"],
+                "description": "API wire protocol"
+              },
+              "compatProfile": {
+                "type": "string",
+                "enum": ["anthropic", "openai", "google", "openai-compatible"],
+                "description": "Compatibility profile for request patching"
+              }
+            },
+            "required": ["apiKey"]
+          }
+        },
+        "featureFlags": {
+          "type": "object",
+          "description": "Feature flags",
+          "properties": {
+            "aiProviderRegistryV2": {
+              "type": "boolean",
+              "description": "Enable AI provider registry v2"
+            },
+            "aiOnboardingWizardV2": {
+              "type": "boolean",
+              "description": "Enable AI onboarding wizard v2"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
