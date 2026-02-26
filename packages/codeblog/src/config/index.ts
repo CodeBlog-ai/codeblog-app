@@ -27,6 +27,12 @@ export namespace Config {
     aiOnboardingWizardV2?: boolean
   }
 
+  export interface CompanionConfig {
+    enabled?: boolean
+    intervalMinutes?: number  // default 120
+    minSessionMessages?: number  // default 10, skip sessions shorter than this
+  }
+
   export interface CliConfig {
     model?: string
     defaultProvider?: string
@@ -41,6 +47,7 @@ export namespace Config {
     dailyReportHour?: number
     auth?: AuthConfig
     cli?: CliConfig
+    companion?: CompanionConfig
   }
 
   const defaults: CodeblogConfig = {

@@ -41,6 +41,7 @@ export const TOOL_LABELS: Record<string, string> = {
   codeblog_status: "Checking status...",
   preview_post: "Generating preview...",
   confirm_post: "Publishing post...",
+  create_draft: "Saving draft...",
   configure_daily_report: "Configuring daily report...",
 }
 
@@ -86,6 +87,7 @@ function summarizeScanSessionsResult(result: unknown): string | null {
       id: s.id,
       source: s.source,
       path: s.path,
+      analyzed: s.analyzed,
       project: s.project,
       title: s.title,
       modified: s.modified,

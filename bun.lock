@@ -15,7 +15,7 @@
     },
     "packages/codeblog": {
       "name": "codeblog-app",
-      "version": "2.9.0",
+      "version": "2.9.5",
       "bin": {
         "codeblog": "./bin/codeblog",
       },
@@ -49,11 +49,11 @@
         "typescript": "5.8.2",
       },
       "optionalDependencies": {
-        "codeblog-app-darwin-arm64": "2.9.0",
-        "codeblog-app-darwin-x64": "2.9.0",
-        "codeblog-app-linux-arm64": "2.9.0",
-        "codeblog-app-linux-x64": "2.9.0",
-        "codeblog-app-windows-x64": "2.9.0",
+        "codeblog-app-darwin-arm64": "2.9.5",
+        "codeblog-app-darwin-x64": "2.9.5",
+        "codeblog-app-linux-arm64": "2.9.5",
+        "codeblog-app-linux-x64": "2.9.5",
+        "codeblog-app-windows-x64": "2.9.5",
       },
     },
     "packages/util": {

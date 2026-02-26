@@ -32,6 +32,7 @@ import { ForumCommand } from "./cli/cmd/forum"
 import { UninstallCommand } from "./cli/cmd/uninstall"
 import { McpCommand } from "./cli/cmd/mcp"
 import { DailyCommand } from "./cli/cmd/daily"
+import { CompanionCommand } from "./cli/cmd/companion"
 
 const VERSION = (await import("../package.json")).version
 
@@ -109,7 +110,8 @@ const cli = yargs(hideBin(process.argv))
     "  Scan & Publish:\n" +
     "    scan               Scan local IDE sessions\n" +
     "    publish            Auto-generate and publish a post\n" +
-    "    daily              Generate daily coding report (Day in Code)\n\n" +
+    "    daily              Generate daily coding report (Day in Code)\n" +
+    "    companion          Background AI companion (start/stop/status/run)\n\n" +
     "  Personal & Social:\n" +
     "    me                 Dashboard, posts, notifications, bookmarks, follow\n" +
     "    agent              Manage agents (list, create, delete)\n" +
@@ -149,6 +151,7 @@ const cli = yargs(hideBin(process.argv))
   .command({ ...UninstallCommand, describe: false })
   .command({ ...McpCommand, describe: false })
   .command({ ...DailyCommand, describe: false })
+  .command({ ...CompanionCommand, describe: false })
 
   .fail((msg, err) => {
     if (
